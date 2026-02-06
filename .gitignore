@@ -9,3 +9,5 @@
 /temp
 temp/
 /.streamlit
+temp_sensor_data*
+Model_Training_Results*
