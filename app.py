@@ -310,7 +310,8 @@ def plot_evaluation_results(eval_results, model_name):
                 marker=dict(
                     size=12,
                     color='#EF553B',  # Red
-                    symbol='diamond'
+                    symbol='diamond',
+                    opacity=0.5
                 ),
                 showlegend=True
             ),
@@ -329,7 +330,8 @@ def plot_evaluation_results(eval_results, model_name):
                 marker=dict(
                     size=12,
                     color="#EF553B",  # Use 00A3CC Blue-ish for star replacement
-                    symbol='star'
+                    symbol='star',
+                    opacity=0.9
                 ),
                 showlegend=True
             ),
@@ -355,9 +357,9 @@ def plot_evaluation_results(eval_results, model_name):
             y0=0,
             y1=1,
             line=dict(
-                color="rgba(239,85,59,0.2)",
-                width=1,
-                dash="dot"
+                color="rgba(239,85,59,0.1)",
+                width=0.3,
+                # dash="dot"
             ),
             layer="below"
         ))
@@ -395,7 +397,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-st.markdown(' - V.4.3: 06-Feb-2026: Improved UX')
+st.markdown(' - V.1.0: 06-Feb-2026: GitRepo-ed')
 
 col1, col2 = st.columns([1.7, 8.3])
 

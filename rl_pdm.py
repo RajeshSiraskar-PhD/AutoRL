@@ -950,7 +950,7 @@ def train_single_model(data_file, algo_name, lr, gm, callback_func, attention_ty
             file_path = data_file
             training_filename = Path(file_path).stem
 
-        ep_str = f"{EPISODES:03d}"  # Episodes as 3-digit (e.g., 100, 200)
+        ep_str = f"{EPISODES:04d}"  # Episodes as 3-digit (e.g., 100, 200)
         lr_str = f"{lr:.0e}" if lr < 1 else f"{lr:.2f}".replace(".", "")  # Scientific notation for small LR
         gm_str = f"{int(gm * 100):02d}"
         
@@ -1252,6 +1252,9 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
         # Lambda (λ): Difference in timesteps between first replacement and first threshold crossing
         t_FR = next((i for i, a in enumerate(actions_taken) if a == 0), None)
         T_wt = next((i for i, w in enumerate(tool_wear_values) if w > eval_wear_threshold), None)
+        # print(f"t_FR: {t_FR}, T_wt: {T_wt}")
+        # T_wt = int((1.0-IAR_RANGE)*T_wt)    # Safe to change tool before 95 % of T_wt
+
         lambda_metric = None
         tool_usage_pct = None
         if t_FR is not None and T_wt is not None:
