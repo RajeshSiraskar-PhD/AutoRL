@@ -393,7 +393,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-# st.markdown(' - V.1.0: Add report')
+# st.markdown(' - V.1.1: Add Welcome screen')
 
 col1, col2 = st.columns([1.7, 8.3])
 
@@ -433,8 +433,8 @@ with col1:
         
         # Algorithm Selection
         st.markdown("**Algorithm Selection**")
-        # all_algorithms = ['PPO', 'A2C', 'DQN', 'REINFORCE']
-        all_algorithms = ['PPO', 'A2C', 'REINFORCE']
+        all_algorithms = ['PPO', 'A2C', 'DQN', 'REINFORCE']
+        # all_algorithms = ['PPO', 'A2C', 'REINFORCE']
         # all_algorithms = ['PPO']
         selected_algorithms = st.multiselect(
             "Training Algorithms",
@@ -613,16 +613,37 @@ with col2:
         plot_placeholder = st.empty()
         logs_placeholder = st.empty()
         
-        # Welcome Screen (First Load)
+        # Welcome Screen (First Load)  redish #e05c58; orangeish #e07358, #eb8b50 blueish #38b4c9, #60a8a3
         if uploaded_file is None:
             st.markdown("""
-            <div style="text-align: center; margin-top: 100px;">
-                <h1 style="font-size: 80px !important; margin-bottom: 20px;">AutoRL ✨</h1>
-                <p style="font-size: 24px; opacity: 0.8; line-height: 1.8;">
-                    <b>Automated</b> Reinforcement Learning for Predictive Maintenance<br>
-                    Upload sensor data to train & compare agents (PPO, A2C, REINFORCE)<br>
-                    Visualize Attention Mechanisms & Real-time Performance
-                </p>
+            <div style="text-align: center; margin-top: 50px;">
+                <span style="font-size: 80px; font-weight: bold; color: #eb8b50; display: block; margin-bottom: 20px;">
+                    AutoRL ✨
+                </span>
+                <hr style="
+                    width: 60%; 
+                    margin: 0 auto 30px auto; 
+                    border: 0; 
+                    border-top: 6px solid #808080; 
+                    opacity: 0.3;
+                ">
+                <ul style="
+                    display: inline-block; 
+                    text-align: left; 
+                    font-size: 20px;
+                    color: #60a8a3; 
+                    opacity: 0.8; 
+                    line-height: 1.8;
+                    margin-top: 0;
+                ">
+                    <li>Automated Reinforcement Learning framework for Predictive Maintenance</li>
+                    <li>Run automated pipleline with various combinations and let the framework automatically pick the best model</li>
+                    <li><b>Base algorithms</b>: PPO, A2C, DQN and REINFORCE</li>
+                    <li><b>Attention Mechanisms</b>: Temporal, Self-Attention, Multi-Head attention and Nadaraya-Watson attention</li>
+                    <li><b>Hyperparameters</b>: Learning-rate (α), Discount Factor Gamma (γ) and Epochs (Planned: Hidden-layers, Hidden-units, etc.)</li>
+                    <li><b>Multi-data handling</b>: Can train agents to handles both IEEE and SIT in-house collected data</li>
+                    <li><b>Visualization</b>: Live training, evaluation and agent performance comparison</li>
+                </ul>
             </div>
             """, unsafe_allow_html=True)
 
