@@ -393,7 +393,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-st.markdown(' - V.1.1: Add report')
+# st.markdown(' - V.1.0: Add report')
 
 col1, col2 = st.columns([1.7, 8.3])
 
@@ -419,7 +419,7 @@ with col1:
         
         # Wear Threshold Setting
         wear_threshold = st.number_input(
-            "Wear Threshold",
+            "Wear Threshold for evaluation",
             min_value=1,
             value=285,
             step=1,
@@ -516,8 +516,8 @@ with col1:
         
         # Hyperparams Input
         st.subheader("Hyperparameters")
-        lr_input = st.text_input("Learning Rates (comma sep)", "0.0005")
-        gamma_input = st.text_input("Gammas (comma sep)", "0.99")
+        lr_input = st.text_input("Learning Rates α", "0.0005")
+        gamma_input = st.text_input("Discount Factor (Gamma) γ", "0.99")
         
         # Parse inputs
         try:
@@ -531,10 +531,12 @@ with col1:
             gammas = [0.99]
         
         # AutoRL Button
-        start_training = st.button("AutoRL: Base agents")
-        st.subheader("Attention Awareness")
-        train_attention_only = st.button("Train Attention Models")
-        apply_attention = st.button("AutoRL: Apply Attention")
+        st.subheader("AutoRL pipeline")
+        apply_attention = st.button("  ✨  AutoRL  ")
+        st.subheader("Isolated pipeline")
+        start_training = st.button("Base Agents")
+        train_attention_only = st.button("Attention Mechanisms")
+        
         
         # st.markdown("---")
         st.subheader("Model comparison")
@@ -610,6 +612,19 @@ with col2:
         # All right-panel content now lives INSIDE the tab!
         plot_placeholder = st.empty()
         logs_placeholder = st.empty()
+        
+        # Welcome Screen (First Load)
+        if uploaded_file is None:
+            st.markdown("""
+            <div style="text-align: center; margin-top: 100px;">
+                <h1 style="font-size: 80px !important; margin-bottom: 20px;">AutoRL ✨</h1>
+                <p style="font-size: 24px; opacity: 0.8; line-height: 1.8;">
+                    <b>Automated</b> Reinforcement Learning for Predictive Maintenance<br>
+                    Upload sensor data to train & compare agents (PPO, A2C, REINFORCE)<br>
+                    Visualize Attention Mechanisms & Real-time Performance
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
         # Sensor plot logic (inside tab)
         # Check for uploaded file in UI (re-check state or handle it)

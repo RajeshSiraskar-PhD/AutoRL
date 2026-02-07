@@ -1291,7 +1291,7 @@ def plot_sensor_data(data_file, wear_threshold=None):
     Plots sensor data based on the detected schema (IEEE or SIT).
     
     For the tool_wear plot, displays as dual-axis chart:
-    - Left axis (yellow): Tool Wear values (0-320 range)
+    - Left axis (Dark Orange): Tool Wear values (0-320 range)
     - Dotted red line: Wear Threshold (horizontal) - uses WEAR_THRESHOLD constant
     - Right axis (blue): ACTION_CODE (0-1 range)
     """
@@ -1310,16 +1310,70 @@ def plot_sensor_data(data_file, wear_threshold=None):
         elif 'Vib_Spindle' in columns and 'Sound_Spindle' in columns:
             schema = 'SIT'
             
-        # Determine features to plot
+        # Determine features to plot and assign colors
         features_to_plot = []
+        feature_colors = {}
+        
+        # Color Palette (Tableau-ish)
+        # Blue: #1f77b4, Green: #2ca02c, Red: #d62728, Purple: #9467bd, Orange: #ff7f0e, Gray: #7f7f7f, Cyan: #17becf
+        # NEW COLORS:
+        # Green: #5eb59e
+        # Blue: #87dde6
+        # Purple > swap with #e6e287 (Yellow-ish)
+        # Grey > #5e8ab5 (Blue-ish Grey)
+        
+        COLOR_YELLOW = '#c7c16b'
+        COLOR_GREEN = '#95dba4'     # Sound/Acoustic
+        COLOR_BLUE = '#5e8ab5'       # Current 
+        COLOR_ORANGE = '#ff7f0e'     # Tool Wear
+        COLOR_RED = '#d62728'
+        
         if schema == 'IEEE':
             # IEEE features
+            # Force: Blue
+            # Vibration: Green
+            # Acoustic: Purple (now Yellow-ish)
             features_to_plot = ['force_x', 'force_y', 'force_z', 'vibration_x', 'vibration_y', 'vibration_z', 'acoustic_emission_rms', 'tool_wear']
+            
+            for f in features_to_plot:
+                if 'force' in f: feature_colors[f] = COLOR_BLUE
+                elif 'vibration' in f: feature_colors[f] = COLOR_GREEN
+                elif 'acoustic' in f: feature_colors[f] = COLOR_YELLOW
+                elif 'tool_wear' in f: feature_colors[f] = COLOR_ORANGE
+                else: feature_colors[f] = COLOR_BLUE
+                
         elif schema == 'SIT':
-            features_to_plot = ['Vib_Spindle', 'Vib_Table', 'Sound_Spindle', 'Sound_table', 'X_Load_Cell', 'Y_Load_Cell', 'Z_Load_Cell', 'Current', 'tool_wear']
+            # SIT features - Revised Layout
+            # Row 1: Vib x 2, Current
+            # Row 2: Load x 3 (x, y, z)
+            # Row 3: Sound, Sound, tool wear
+            
+            # Vibration: Green
+            # Load: Blue
+            # Sound: Purple (now Yellow-ish)
+            # Current: Gray
+            features_to_plot = [
+                'Vib_Spindle', 'Vib_Table', 'Current',        # Row 1
+                'X_Load_Cell', 'Y_Load_Cell', 'Z_Load_Cell',  # Row 2
+                'Sound_Spindle', 'Sound_table', 'tool_wear'   # Row 3
+            ]
+            
+            for f in features_to_plot:
+                if 'Vib' in f: feature_colors[f] = COLOR_GREEN
+                elif 'Load' in f: feature_colors[f] = COLOR_BLUE
+                elif 'Sound' in f: feature_colors[f] = COLOR_YELLOW
+                elif 'Current' in f: feature_colors[f] = COLOR_GREEN
+                elif 'tool_wear' in f: feature_colors[f] = COLOR_ORANGE
+                else: feature_colors[f] = COLOR_BLUE
+                
         else:
             # Fallback
             features_to_plot = [c for c in columns if c != 'ACTION_CODE'][:8]
+            for f in features_to_plot:
+                feature_colors[f] = COLOR_BLUE # Default blue
+            if 'tool_wear' in columns:
+                features_to_plot.append('tool_wear')
+                feature_colors['tool_wear'] = COLOR_ORANGE
             
         # Filter available
         features_to_plot = [f for f in features_to_plot if f in columns]
@@ -1335,11 +1389,12 @@ def plot_sensor_data(data_file, wear_threshold=None):
         specs = [[{"secondary_y": (i*3 + j == tool_wear_index)} for j in range(3)] for i in range(3)]
         
         # Create Subplots (3x3 Grid) with secondary_y support for tool_wear
+        # Increased spacing to reduce tightness
         fig = make_subplots(
             rows=3, cols=3, 
             subplot_titles=features_to_plot, 
-            vertical_spacing=0.05, 
-            horizontal_spacing=0.02,
+            vertical_spacing=0.12,  # Increased from 0.05
+            horizontal_spacing=0.05, # Increased from 0.02
             specs=specs
         )
         
@@ -1348,24 +1403,27 @@ def plot_sensor_data(data_file, wear_threshold=None):
             col = (i % 3) + 1
             if row > 3: break # Limit to 9 plots
             
+            # Get color
+            line_color = feature_colors.get(feature, COLOR_BLUE)
+            
             # Special handling for tool_wear: dual-axis with threshold line
             if feature == 'tool_wear':
-                # Add tool wear as yellow line on primary y-axis
+                # Add tool wear as Dark Orange line on primary y-axis
                 fig.add_trace(
                     go.Scatter(y=data[feature], name=feature, mode='lines', 
-                               line=dict(color='yellow')),
+                               line=dict(color=line_color, width=3)),
                     row=row, col=col, secondary_y=False
                 )
                 
                 # Add wear threshold as dotted red horizontal line on primary y-axis
-                fig.add_hline(y=display_threshold, line_dash="dot", line_color="red",
-                              annotation_text=f"Wear Threshold ({display_threshold})", row=row, col=col, secondary_y=False)
+                fig.add_hline(y=display_threshold, line_dash="dot", line_color=COLOR_RED,
+                              annotation_text=f"Threshold ({display_threshold})", row=row, col=col, secondary_y=False)
                 
                 # Add ACTION_CODE as blue line on secondary y-axis if available
                 if 'ACTION_CODE' in columns:
                     fig.add_trace(
                         go.Scatter(y=data['ACTION_CODE'], name='ACTION_CODE', mode='lines',
-                                   line=dict(color='blue')),
+                                   line=dict(color=COLOR_BLUE, width=3)),
                         row=row, col=col, secondary_y=True
                     )
                     # Update secondary y-axis title
@@ -1374,17 +1432,18 @@ def plot_sensor_data(data_file, wear_threshold=None):
                 # Update primary y-axis title
                 fig.update_yaxes(title_text="Tool Wear", secondary_y=False, row=row, col=col)
             else:
-                # For light theme, we can use standard colors. Plotly cycles them automatically.
+                # Standard plot with assigned color
                 fig.add_trace(
-                    go.Scatter(y=data[feature], name=feature, mode='lines'),
+                    go.Scatter(y=data[feature], name=feature, mode='lines',
+                               line=dict(color=line_color)),
                     row=row, col=col
                 )
             
         fig.update_layout(
-            height=800, 
+            height=900,  # Increased height to accommodate larger spacing
             showlegend=False, 
             template="plotly_white", # Light background
-            margin=dict(l=20, r=20, t=50, b=20) # Tight margins
+            margin=dict(l=40, r=40, t=60, b=40) # Loosened margins
         ) 
         return fig
 
