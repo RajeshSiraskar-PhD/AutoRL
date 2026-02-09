@@ -37,7 +37,39 @@ st.markdown("""
     }
 
     h2, h3, p, label {
-        color: #2e9294 !important;
+        color: #32a6a8 !important;
+    }
+    
+    /* Warnings and Errors - make text white */
+    .stAlert, .stWarning, .stError, .stInfo {
+        color: #FFFFFF !important;
+    }
+    
+    /* Target all nested elements and text within alerts */
+    .stAlert *, .stWarning *, .stError *, .stInfo * {
+        color: #FFFFFF !important;
+    }
+    
+    /* Target markdown text within alerts */
+    .stAlert p, .stWarning p, .stError p, .stInfo p {
+        color: #FFFFFF !important;
+    }
+    
+    .stAlert span, .stWarning span, .stError span, .stInfo span {
+        color: #FFFFFF !important;
+    }
+    
+    .stAlert strong, .stWarning strong, .stError strong, .stInfo strong {
+        color: #FFFFFF !important;
+    }
+    
+    /* Deep nesting fallback */
+    .stAlert>div>div, .stWarning>div>div, .stError>div>div, .stInfo>div>div {
+        color: #FFFFFF !important;
+    }
+    
+    .stAlert>div>div>p, .stWarning>div>div>p, .stError>div>div>p, .stInfo>div>div>p {
+        color: #FFFFFF !important;
     }
     
     /* Inputs */
@@ -393,7 +425,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-# st.markdown(' - V.1.1: Add Welcome screen')
+st.markdown(' - V.1.2: Add error handling for feature mismatch during evaluation | 09-Feb-2026')
 
 col1, col2 = st.columns([1.7, 8.3])
 
@@ -570,11 +602,22 @@ with col1:
                         wear_threshold_val = st.session_state.get('wear_threshold', 285)
                         eval_results = rl_pdm.adjusted_evaluate_model(model_path, test_file_path, wear_threshold=wear_threshold_val)
                         
-                        # Store in session state for plotting
-                        st.session_state.eval_results = eval_results
-                        st.session_state.eval_model_name = selected_model
-                        st.session_state.eval_file_name = test_file.name  # Store test file name
-                        st.toast("✅ Evaluation complete!", icon="✅")
+                        # Check for feature mismatch error
+                        if isinstance(eval_results, dict) and eval_results.get('error') == True:
+                            if eval_results.get('type') == 'feature_mismatch':
+                                st.error(eval_results.get('message'))
+                                st.info(f"**Model Details:** Trained on {eval_results.get('machine_family')}")
+                                # Store error in session state for display in right panel
+                                st.session_state.eval_error = eval_results
+                                st.session_state.eval_error_time = datetime.now()
+                        else:
+                            # Clear any previous errors
+                            st.session_state.eval_error = None
+                            # Store in session state for plotting
+                            st.session_state.eval_results = eval_results
+                            st.session_state.eval_model_name = selected_model
+                            st.session_state.eval_file_name = test_file.name  # Store test file name
+                            st.toast("✅ Evaluation complete!", icon="✅")
                         
                     except Exception as e:
                         st.error(f"Error evaluating model: {str(e)}")
@@ -604,6 +647,10 @@ with col2:
         st.session_state.training_results = []
     if 'eval_results' not in st.session_state:
         st.session_state.eval_results = None
+    if 'eval_error' not in st.session_state:
+        st.session_state.eval_error = None
+    if 'eval_error_time' not in st.session_state:
+        st.session_state.eval_error_time = None
 
     right_tabs = st.tabs(["Training Panel", "Model Comparison Panel", "Evaluation Panel"])
 
@@ -1382,46 +1429,53 @@ with col2:
             eval_results = st.session_state.eval_results
             eval_file_name = st.session_state.get('eval_file_name', 'Unknown')
             
-            st.header(f"Evaluation Results   ⏵   {st.session_state.eval_model_name}")
-            st.subheader(f'Test File: {eval_file_name}', divider=True)
-            # st.subheader(f'Agent: {st.session_state.eval_model_name} | Test File: {eval_file_name}')
-            # st.info(f"📁 Test Data File: **{eval_file_name}**")
-            
-            # Display model override warning if applicable
-            # if eval_results.get('model_override', False):
-                # st.warning(f"Replacement suggested at timestep {eval_results.get('override_timestep', 'N/A')}.")
-            
-            # Display IAR bounds if available
-            # if 'IAR_lower' in eval_results and 'IAR_upper' in eval_results:
-            #     # st.markdown(f"**Agent: {st.session_state.eval_model_name}**")
-            #     col_IAR1, col_IAR2, col_IAR3, col_IAR4 = st.columns(4)
-            #     with col_IAR1:
-            #         st.metric("Wear Threshold", f"{eval_results['wear_threshold']:.2f}", border=True)
-            #     with col_IAR2:
-            #         st.metric("Ideal Replacement Range", f"± {100.0*rl_pdm.IAR_RANGE:.2f}%", border=True)
-            #     with col_IAR3:
-            #         st.metric("Test file", eval_file_name, border=True)
-            #     with col_IAR4:   
-            #         st.metric("Evaluation Steps", len(eval_results['timesteps']), border=True)
-                   
-            # Display metrics
-            col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-            with col_m1:
-                st.metric("Tool Usage %", f"{100*eval_results['tool_usage_pct']:.1f}%" if eval_results.get('tool_usage_pct') is not None else 'N/A', help="t_FR / T_wt", border=True)
-            with col_m2:
-                st.metric("Lambda (λ)", eval_results.get('lambda', 'N/A'), help="T_wt - t_FR. Ideal is zero.", border=True)
-            with col_m3:
-                st.metric("Threshold Violations", eval_results['threshold_violations'], help="Number of timesteps where wear exceeded threshold.", border=True)
-            with col_m4:
-                st.metric("Wear Threshold Timestep (T_wt)", eval_results.get('T_wt', 'N/A'), help="Timestep where tool wear first crosses the threshold.", border=True)
-            with col_m5:
-                st.metric("First Replacement at (t_FR)", eval_results.get('t_FR', 'N/A'), help="Timestep of the first replacement action.", border=True)
+            # Check if this is an error response
+            if eval_results.get('error') == True:
+                # Error occurred during evaluation - don't display results
+                st.warning("❌ Evaluation could not be completed. See the error message above for details.")
+            else:
+                # Successful evaluation - display results
+                st.header(f"Evaluation Results   ⏵   {st.session_state.eval_model_name}")
+                st.subheader(f'Test File: {eval_file_name}', divider=True)
+                # st.subheader(f'Agent: {st.session_state.eval_model_name} | Test File: {eval_file_name}')
+                # st.info(f"📁 Test Data File: **{eval_file_name}**")
                 
-            
-            # Plot evaluation results
-            fig_eval = plot_evaluation_results(eval_results, st.session_state.eval_model_name)
-            st.plotly_chart(fig_eval, use_container_width=True, key="evaluation_results_plot")
+                # Display model override warning if applicable
+                # if eval_results.get('model_override', False):
+                    # st.warning(f"Replacement suggested at timestep {eval_results.get('override_timestep', 'N/A')}.")
+                
+                # Display IAR bounds if available
+                # if 'IAR_lower' in eval_results and 'IAR_upper' in eval_results:
+                #     # st.markdown(f"**Agent: {st.session_state.eval_model_name}**")
+                #     col_IAR1, col_IAR2, col_IAR3, col_IAR4 = st.columns(4)
+                #     with col_IAR1:
+                #         st.metric("Wear Threshold", f"{eval_results['wear_threshold']:.2f}", border=True)
+                #     with col_IAR2:
+                #         st.metric("Ideal Replacement Range", f"± {100.0*rl_pdm.IAR_RANGE:.2f}%", border=True)
+                #     with col_IAR3:
+                #         st.metric("Test file", eval_file_name, border=True)
+                #     with col_IAR4:   
+                #         st.metric("Evaluation Steps", len(eval_results['timesteps']), border=True)
+                       
+                # Display metrics
+                col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+                with col_m1:
+                    st.metric("Tool Usage %", f"{100*eval_results['tool_usage_pct']:.1f}%" if eval_results.get('tool_usage_pct') is not None else 'N/A', help="t_FR / T_wt", border=True)
+                with col_m2:
+                    st.metric("Lambda (λ)", eval_results.get('lambda', 'N/A'), help="T_wt - t_FR. Ideal is zero.", border=True)
+                with col_m3:
+                    st.metric("Threshold Violations", eval_results['threshold_violations'], help="Number of timesteps where wear exceeded threshold.", border=True)
+                with col_m4:
+                    st.metric("Wear Threshold Timestep (T_wt)", eval_results.get('T_wt', 'N/A'), help="Timestep where tool wear first crosses the threshold.", border=True)
+                with col_m5:
+                    st.metric("First Replacement at (t_FR)", eval_results.get('t_FR', 'N/A'), help="Timestep of the first replacement action.", border=True)
+                    
+                
+                # Plot evaluation results
+                fig_eval = plot_evaluation_results(eval_results, st.session_state.eval_model_name)
+                st.plotly_chart(fig_eval, use_container_width=True, key="evaluation_results_plot")
             # Option to clear evaluation
             if st.button("Clear Evaluation Results"):
                 st.session_state.eval_results = None
+                st.session_state.eval_error = None
                 st.rerun()

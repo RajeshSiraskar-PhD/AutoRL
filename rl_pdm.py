@@ -1118,6 +1118,37 @@ def get_available_models():
     
     return sorted(models)
 
+# $$$ HELPER: Extract training data type from model name $$$
+def _extract_training_data_type(model_name):
+    """
+    Extract the training data type (IEEE or SIT) from model filename.
+    
+    Model name format: algo_datatype_other_params
+    Examples: DQN_SIT_10..., PPO_IEEE_05..., A2C_SIT_10...
+    
+    Returns: 'IEEE', 'SIT', or 'Unknown'
+    """
+    parts = model_name.split('_')
+    if len(parts) >= 2:
+        data_type = parts[1]
+        if 'IEEE' in data_type.upper():
+            return 'IEEE'
+        elif 'SIT' in data_type.upper():
+            return 'SIT'
+    return 'Unknown'
+
+# $$$ HELPER: Get milling machine family description $$$
+def _get_machine_family_description(data_type):
+    """
+    Return human-friendly description of the milling machine family.
+    """
+    if data_type == 'IEEE':
+        return "IEEE Test Benchmark (controlled laboratory environment)"
+    elif data_type == 'SIT':
+        return "SIT Production Machine (real-world shop floor deployment)"
+    else:
+        return f"Data type: {data_type}"
+
 # $$$ Evaluation Results with Ideal Action Region (IAR) Logic $$$
 def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
     """
@@ -1133,7 +1164,7 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
     4. If NO valid replacement in IAR found, force one at random point (MODEL_OVERRIDE = True)
     
     Returns:
-    {
+    Success case: {
         'timesteps': [list of timesteps],
         'tool_wear': [list of tool wear values],
         'actions': [list of adjusted actions (0 or 1)],
@@ -1142,6 +1173,14 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
         'threshold_violations': number of violations (wear > WEAR_THRESHOLD with no replacement),
         'model_override': bool - True if forced replacement was added,
         'override_timestep': timestep where override occurred (None if no override)
+    }
+    
+    Error case (feature mismatch): {
+        'error': True,
+        'type': 'feature_mismatch',
+        'message': User-friendly error message,
+        'training_data_type': What data type the model was trained on,
+        'machine_family': Human-friendly description of the machine family
     }
     """
     try:
@@ -1154,6 +1193,9 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
         # Determine algo from model filename
         model_name = os.path.basename(model_path)
         algo_name = model_name.split('_')[0]
+        
+        # Extract training data type from model name
+        training_data_type = _extract_training_data_type(model_name)
         
         # Load model
         algos = {
@@ -1191,11 +1233,21 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
                 obs = data.iloc[idx][env.features].values.astype(np.float32)
                 
                 if len(obs) != expected_shape:
-                    raise ValueError(
-                        f"Feature mismatch at row {idx}! Expected {expected_shape} features but got {len(obs)}.\n"
-                        f"Features: {env.features}\n"
-                        f"Data shape: {data.shape}"
-                    )
+                    # Feature mismatch detected - return graceful error response
+                    return {
+                        'error': True,
+                        'type': 'feature_mismatch',
+                        'message': (
+                            f"⚠️ **Data Schema Mismatch Detected**\n\n"
+                            f"This model was trained on **{_get_machine_family_description(training_data_type)}** data.\n\n"
+                            f"The test data you uploaded does not match this schema. "
+                            f"Please upload a test file from the **same family of milling machine**."
+                        ),
+                        'training_data_type': training_data_type,
+                        'machine_family': _get_machine_family_description(training_data_type),
+                        'expected_features': len(env.features),
+                        'received_features': len(obs)
+                    }
                 
                 # Get action from model
                 action, _ = model.predict(obs, deterministic=True)
