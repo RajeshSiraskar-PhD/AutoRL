@@ -7,6 +7,7 @@
 
 import pandas as pd
 import numpy as np
+import json
 from typing import Any, Dict, Optional, Type, Union, TypeVar
 
 import gymnasium as gym
@@ -980,6 +981,29 @@ def train_single_model(data_file, algo_name, lr, gm, callback_func, attention_ty
         model.save(model_path)
         print(f"Model saved to {model_path}")
         
+        # Save metadata to JSON file alongside model
+        metadata = {
+            'algorithm': algo_name,
+            'attention_mechanism': attention_type,
+            'training_data': training_filename,
+            'learning_rate': float(lr),
+            'gamma': float(gm),
+            'episodes': EPISODES,
+            'finite_horizon': FIXED_X_AXIS_LENGTH,
+            'training_date': date_time,
+            'avg_wear_margin': float(avg_margin),
+            'avg_reward': float(avg_reward),
+            'avg_violations': float(avg_violations),
+            'avg_replacements': float(avg_replacements),
+            'weighted_score': float(weighted_score),
+            't_ss': float(t_ss),
+            'sigma_ss': float(sigma_ss)
+        }
+        metadata_path = model_path + '_metadata.json'
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        print(f"Metadata saved to {metadata_path}")
+        
         return {
             'Agent': f"{algo_name}{att_suffix}",
             'LR': lr,
@@ -1118,6 +1142,30 @@ def get_available_models():
     
     return sorted(models)
 
+def load_model_metadata(model_path):
+    """
+    Load training metadata for a model from its JSON file.
+    
+    Args:
+        model_path: Path to the model (without .zip extension)
+    
+    Returns:
+        dict with training metadata, or empty dict if metadata file not found
+    """
+    metadata_path = model_path + '_metadata.json'
+    
+    try:
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+            return metadata
+        else:
+            print(f"Warning: No metadata file found at {metadata_path}")
+            return {}
+    except Exception as e:
+        print(f"Error loading metadata: {e}")
+        return {}
+
 # $$$ HELPER: Extract training data type from model name $$$
 def _extract_training_data_type(model_name):
     """
@@ -1206,6 +1254,9 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
         
         AlgoClass = algos.get(algo_name, A2C)
         model = AlgoClass.load(model_path)
+        
+        # Load training metadata
+        training_metadata = load_model_metadata(model_path)
         
         # Create environment for feature extraction (use TRAINING_WEAR_THRESHOLD)
         env = MT_Env(data_file, TRAINING_WEAR_THRESHOLD)
@@ -1319,6 +1370,7 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
                 tool_usage_pct = None
 
         return {
+            # Evaluation Results
             'timesteps': timesteps,
             'tool_wear': tool_wear_values,
             'actions': actions_taken,
@@ -1331,7 +1383,9 @@ def adjusted_evaluate_model(model_path, data_file, wear_threshold=None):
             'model_override': model_override,
             'override_timestep': override_timestep,
             'IAR_lower': IAR_lower,
-            'IAR_upper': IAR_upper
+            'IAR_upper': IAR_upper,
+            # Training Metadata
+            'training_metadata': training_metadata
         }
     
     except Exception as e:

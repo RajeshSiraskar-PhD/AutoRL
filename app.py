@@ -13,6 +13,11 @@ import rl_pdm # Import our backend
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+try:
+    from openpyxl import load_workbook
+    from openpyxl.utils.dataframe import dataframe_to_rows
+except ImportError:
+    openpyxl = None
 
 # --- CONFIG ---
 st.set_page_config(page_title="AutoRL - Predictive Maintenance", layout="wide")
@@ -42,34 +47,34 @@ st.markdown("""
     
     /* Warnings and Errors - make text white */
     .stAlert, .stWarning, .stError, .stInfo {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     /* Target all nested elements and text within alerts */
     .stAlert *, .stWarning *, .stError *, .stInfo * {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     /* Target markdown text within alerts */
     .stAlert p, .stWarning p, .stError p, .stInfo p {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     .stAlert span, .stWarning span, .stError span, .stInfo span {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     .stAlert strong, .stWarning strong, .stError strong, .stInfo strong {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     /* Deep nesting fallback */
     .stAlert>div>div, .stWarning>div>div, .stError>div>div, .stInfo>div>div {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     .stAlert>div>div>p, .stWarning>div>div>p, .stError>div>div>p, .stInfo>div>div>p {
-        color: #FFFFFF !important;
+        color: #e0e0e0 !important;
     }
     
     /* Inputs */
@@ -127,6 +132,70 @@ def smooth_data(data, window_size):
     if len(data) < window_size:
         return data
     return pd.Series(data).rolling(window=window_size, min_periods=1).mean().tolist()
+
+def save_evaluation_results_to_excel(eval_results, model_name, test_file_name):
+    """
+    Save evaluation results to Excel file, creating new file or appending to existing.
+    
+    Args:
+        eval_results: Dictionary with evaluation results and training_metadata
+        model_name: Name of the model being evaluated
+        test_file_name: Name of the test file used
+    """
+    try:
+        file_path = "Evaluation_Results.xlsx"
+        
+        # Extract data from eval_results
+        training_meta = eval_results.get('training_metadata', {})
+        
+        # Create row data with all fields
+        row_data = {
+            'Date-Time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'Model Name': model_name,
+            'Test File': test_file_name,
+            # Training Metadata
+            'Algorithm': training_meta.get('algorithm', 'N/A'),
+            'Attention Mechanism': training_meta.get('attention_mechanism', 'None'),
+            'Training Data': training_meta.get('training_data', 'N/A'),
+            'Learning Rate': training_meta.get('learning_rate', 'N/A'),
+            'Gamma': training_meta.get('gamma', 'N/A'),
+            'Episodes': training_meta.get('episodes', 'N/A'),
+            'Finite Horizon': training_meta.get('finite_horizon', 'N/A'),
+            'Training Date': training_meta.get('training_date', 'N/A'),
+            'Avg Wear Margin': training_meta.get('avg_wear_margin', 'N/A'),
+            'Avg Reward': training_meta.get('avg_reward', 'N/A'),
+            'Avg Violations (Train)': training_meta.get('avg_violations', 'N/A'),
+            'Avg Replacements (Train)': training_meta.get('avg_replacements', 'N/A'),
+            'Weighted Score': training_meta.get('weighted_score', 'N/A'),
+            'T_ss': training_meta.get('t_ss', 'N/A'),
+            'Sigma_ss': training_meta.get('sigma_ss', 'N/A'),
+            # Evaluation Results
+            'Tool Usage %': f"{100*eval_results.get('tool_usage_pct', 0):.1f}%" if eval_results.get('tool_usage_pct') is not None else 'N/A',
+            'Lambda': eval_results.get('lambda', 'N/A'),
+            'Threshold Violations (Eval)': eval_results.get('threshold_violations', 'N/A'),
+            'T_wt': eval_results.get('T_wt', 'N/A'),
+            't_FR': eval_results.get('t_FR', 'N/A')
+        }
+        
+        # Check if file exists
+        if os.path.exists(file_path):
+            # Append to existing file
+            df_existing = pd.read_excel(file_path)
+            df_new = pd.DataFrame([row_data])
+            df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+            df_combined.to_excel(file_path, index=False, sheet_name='Results')
+            st.toast(f"✅ Results appended", icon="✅")
+        else:
+            # Create new file
+            df_new = pd.DataFrame([row_data])
+            df_new.to_excel(file_path, index=False, sheet_name='Results')
+            st.toast(f"✅ File created: {file_path}", icon="✅")
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Error saving evaluation results: {e}")
+        return False
 
 def plot_4_panel(metrics, title, height=600, data_filename=None, t_ss=None, sigma_ss=None):
     """
@@ -344,7 +413,7 @@ def plot_evaluation_results(eval_results, model_name):
                     size=12,
                     color='#EF553B',  # Red
                     symbol='diamond',
-                    opacity=0.5
+                    opacity=0.7
                 ),
                 showlegend=True
             ),
@@ -362,9 +431,9 @@ def plot_evaluation_results(eval_results, model_name):
                 mode='markers',
                 marker=dict(
                     size=12,
-                    color="#EF553B",  # Use 00A3CC Blue-ish for star replacement
-                    symbol='star',
-                    opacity=0.9
+                    color="#EF3B59",  # Use 00A3CC Blue-ish for star replacement
+                    symbol='diamond',
+                    opacity=0.7
                 ),
                 showlegend=True
             ),
@@ -1474,8 +1543,15 @@ with col2:
                 # Plot evaluation results
                 fig_eval = plot_evaluation_results(eval_results, st.session_state.eval_model_name)
                 st.plotly_chart(fig_eval, use_container_width=True, key="evaluation_results_plot")
-            # Option to clear evaluation
-            if st.button("Clear Evaluation Results"):
-                st.session_state.eval_results = None
-                st.session_state.eval_error = None
-                st.rerun()
+                
+                # Action buttons at bottom
+                col_btn1, col_btn2, col_spacer = st.columns([1, 1, 3])
+                with col_btn1:
+                    if st.button("✓ Save Results", use_container_width=True):
+                        if save_evaluation_results_to_excel(eval_results, st.session_state.eval_model_name, eval_file_name):
+                            pass  # Toast message already shown in function
+                with col_btn2:
+                    if st.button("⌧ Clear Results", use_container_width=True):
+                        st.session_state.eval_results = None
+                        st.session_state.eval_error = None
+                        st.rerun()
