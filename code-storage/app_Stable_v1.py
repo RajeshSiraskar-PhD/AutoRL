@@ -3,7 +3,6 @@
 # Author: Rajesh Siraskar
 # Web-UX code
 # V.1.0: 06-Feb-2026: First commit
-# V.1.2: Stable ver. Model eval save report | 09-Feb-2026
 # ---------------------------------------------------------------------------------------
 
 import streamlit as st
@@ -495,7 +494,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-st.markdown(' - V.1.2: Stable ver. Model eval save report | 09-Feb-2026')
+st.markdown(' - V.1.2: Add error handling for feature mismatch during evaluation | 09-Feb-2026')
 
 col1, col2 = st.columns([1.7, 8.3])
 

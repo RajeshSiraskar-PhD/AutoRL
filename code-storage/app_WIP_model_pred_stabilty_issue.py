@@ -3,7 +3,6 @@
 # Author: Rajesh Siraskar
 # Web-UX code
 # V.1.0: 06-Feb-2026: First commit
-# V.1.2: Stable ver. Model eval save report | 09-Feb-2026
 # ---------------------------------------------------------------------------------------
 
 import streamlit as st
@@ -432,8 +431,8 @@ def plot_evaluation_results(eval_results, model_name):
                 mode='markers',
                 marker=dict(
                     size=12,
-                    color="#EF3B59",  # Use 00A3CC Blue-ish for star replacement
-                    symbol='diamond',
+                    color="#00A3CC",  # Use 00A3CC Blue-ish for star replacement
+                    symbol='square',
                     opacity=0.7
                 ),
                 showlegend=True
@@ -495,7 +494,7 @@ def plot_evaluation_results(eval_results, model_name):
 
 # --- LAYOUT --- # $$$
 st.title(f'AutoRL: Auto-train Predictive Maintenance Agents') 
-st.markdown(' - V.1.2: Stable ver. Model eval save report | 09-Feb-2026')
+st.markdown(' - V.1.3: Replacements issue | 09-Feb-2026')
 
 col1, col2 = st.columns([1.7, 8.3])
 
