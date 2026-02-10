@@ -968,15 +968,16 @@ def train_single_model(data_file, algo_name, lr, gm, callback_func, attention_ty
         elif attention_type == 'DL':
             att_suffix_file = "_DL"
         elif attention_type == 'Temporal':
-            att_suffix_file = "_Temporal"
+            att_suffix_file = "_TP"
         elif attention_type == 'MultiHead':
-            att_suffix_file = "_MultiHead"
+            att_suffix_file = "_MH"
         elif attention_type == 'SelfAttn':
-            att_suffix_file = "_SelfAttn"
+            att_suffix_file = "_SA"
         elif attention_type == 'Hybrid':
-            att_suffix_file = "_Hybrid"
+            att_suffix_file = "_HY"
         
-        model_filename = f"{algo_name}_{training_filename}_{horizon_label}_{ep_str}_{lr_str}_{gm_str}{att_suffix_file}_{date_time}"
+        # model_filename = f"{algo_name}_{training_filename}_{horizon_label}_{ep_str}_{lr_str}_{gm_str}{att_suffix_file}_{date_time}"
+        model_filename = f"{algo_name}{att_suffix_file}_{training_filename}_{date_time}"
         model_path = os.path.join("models", model_filename)
         os.makedirs("models", exist_ok=True)
         model.save(model_path)
