@@ -6,8 +6,10 @@
 /data
 /models
 /temp
+/results
 temp/
 /.streamlit
+/code-storage
 temp_sensor_data*
 Model_Training_Results*
 verify*
