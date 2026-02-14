@@ -216,15 +216,15 @@ def create_evaluation_plot(eval_result: Dict, model_filename: str, test_filename
         
         # Get replacement points
         model_override = eval_result.get('model_override', False)
-        override_timestep = eval_result.get('override_timestep', None)
+        override_indices = eval_result.get('override_indices', [])
         
         # Find replacements
         replacement_timesteps = [t for t, a in zip(timesteps, actions) if a == 0]
         
         # Separate normal and override replacements
-        if model_override and override_timestep is not None:
-            override_replacements = [t for t in replacement_timesteps if t == override_timestep]
-            normal_replacements = [t for t in replacement_timesteps if t != override_timestep]
+        if model_override and override_indices:
+            override_replacements = [t for t in replacement_timesteps if t in override_indices]
+            normal_replacements = [t for t in replacement_timesteps if t not in override_indices]
         else:
             normal_replacements = replacement_timesteps
             override_replacements = []
@@ -324,7 +324,7 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
             
             try:
                 # Evaluate model
-                eval_result = rl_pdm.adjusted_evaluate_model(model_path, test_file)
+                eval_result = rl_pdm.evaluate_trained_model(model_path, test_file, seed=42)
                 
                 # Check for errors
                 if eval_result.get('error', False):
