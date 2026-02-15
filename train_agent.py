@@ -952,7 +952,10 @@ Examples:
         # Phase 3: Save results
         results_file = save_results(results_df, args.schema, args.attention_mechanism)
         
-        # Phase 4: Create analysis report
+        # Phase 4: Create analysis report and heatmaps
+        print(f"\nGenerating heatmaps...")
+        create_heatmaps(results_df, args.schema, args.attention_mechanism)
+
         print(f"\nGenerating analysis report...")
         generate_analysis_report(results_df, args.schema, args.attention_mechanism)
         
