@@ -13,11 +13,11 @@
 #   python train_agent.py  # Uses all defaults: SIT, PPO, 200 episodes, no attention 
 # ---------------------------------------------------------------------------------------
 print('\n\n--------------------------------------------------------------------------')
-print(' AutoRL CLI')
+print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.3.1 | 14-Feb-2026\n\n')
-print('CLI version that trains and evaluates RL agents for Predictive Maintenance')
+print('Version: V.4.1 | 15-Feb-2026 -- Analysis report\n\n')
+print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
 print('--------------------------------------------------------------------------')
 print('Usage:')
 print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
@@ -480,8 +480,18 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                 # Extract model filename from path
                 model_filename = Path(model_path).stem
                 
+                # Map attention short form to full name
+                attention_map = {
+                    'MH': 'Multi-Head',
+                    'NW': 'Nadaraya-Watson',
+                    'SA': 'Self-Attention',
+                    'TP': 'Temporal'
+                }
+                att_full_name = attention_map.get(att_short, att_short) if att_short else 'None'
+
                 row = {
                     'Model': f"{algo}",
+                    'Attention Mechanism': att_full_name,
                     'Model File': model_filename,
                     'Training File': train_filename,
                     'Test File': test_filename,
@@ -538,8 +548,9 @@ def calculate_eval_score(eval_result: Dict) -> float:
     tool_usage_score = min(1.0, max(0.0, tool_usage_pct))
     
     # Normalize lambda (lower is better, 0 is best)
-    # Assume lambda range 0-100, scale inversely
-    lambda_score = max(0.0, 1.0 - (abs(lambda_metric) / 100.0))
+    # Lambda max is the wear threshold - IAR_LOWER
+    IAR_LOWER = rl_pdm.WEAR_THRESHOLD * (1.0 - rl_pdm.IAR_RANGE)
+    lambda_score = max(0.0, 1.0 - (abs(lambda_metric) / IAR_LOWER))
     
     # Normalize violations (lower is better, 0 is best)
     violation_score = max(0.0, 1.0 / (1.0 + violations))
@@ -647,7 +658,188 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     fig.savefig(filepath, dpi=150, bbox_inches='tight')
     plt.close(fig)
     
-    print(f"✓ Comprehensive heatmap saved: {filepath}")
+
+def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_mech: int, results_dir: str = "results"):
+    """
+    Generate a comprehensive analysis report with statistical plots and error bars.
+    
+    Creates a detailed 4-panel summary:
+    1. Overall Performance Matrix (Heatmap)
+    2. Model Performance by Attention (Grouped Bar Chart)
+    3. Algorithm Performance (Bar Chart with Std Dev)
+    4. Attention Mechanism Performance (Bar Chart with Std Dev)
+    
+    Args:
+        results_df: DataFrame with evaluation results
+        schema: 'SIT' or 'IEEE'
+        attention_mech: Attention mechanism flag
+        results_dir: Directory to save report
+    """
+    print(f"\nGenerating comprehensive analysis report...")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # Check if 'Attention Mechanism' exists (it should, based on previous steps)
+    if 'Attention Mechanism' not in results_df.columns:
+        # Fallback if column missing (e.g. older version)
+        results_df['Attention Mechanism'] = 'None'
+    
+    # Set plot style
+    sns.set_theme(style="whitegrid")
+    
+    # Create figure with GridSpec layout
+    fig = plt.figure(figsize=(20, 16))
+    fig.patch.set_facecolor('#f8f9fa')
+    
+    # Grid: 2 rows, 2 columns
+    # Row 1, Col 1: Overall Heatmap
+    # Row 1, Col 2: Model Performance (Grouped)
+    # Row 2, Col 1: Algo Performance
+    # Row 2, Col 2: Attention Performance
+    # Increased padding to prevent overlap
+    gs = fig.add_gridspec(2, 2, hspace=0.6, wspace=0.3)
+    
+    axs = []
+    axs.append(fig.add_subplot(gs[0, 0])) # ax0: Heatmap
+    axs.append(fig.add_subplot(gs[0, 1])) # ax1: Model Perf
+    axs.append(fig.add_subplot(gs[1, 0])) # ax2: Algo Perf
+    axs.append(fig.add_subplot(gs[1, 1])) # ax3: Attn Perf
+    
+    # Calculate dynamic axis limits
+    min_score = results_df['Eval_Score'].min()
+    max_score = results_df['Eval_Score'].max()
+    
+    # Heuristic: Lower bound = min_score - (range * 0.2) or min_score - 0.05
+    # Ensure it doesn't go below 0
+    # If all scores are high (e.g. > 0.9), we want to zoom in
+    padding = max(0.05, (max_score - min_score) * 0.2)
+    lower_bound = max(0.0, min_score - padding)
+    # Round down to nearest 0.05
+    lower_bound = np.floor(lower_bound * 20) / 20.0
+    
+    upper_bound = 1.0
+    
+    print(f"  Axis limits: [{lower_bound:.2f}, {upper_bound:.2f}] (Min score: {min_score:.4f})")
+
+    # --- Panel A: Overall Performance (Heatmap) ---
+    ax = axs[0]
+    try:
+        # Aggregation
+        pivot_data = results_df.pivot_table(
+            index='Model', 
+            columns='Attention Mechanism', 
+            values='Eval_Score', 
+            aggfunc='mean'
+        )
+        
+        sns.heatmap(
+            pivot_data, 
+            annot=True, 
+            fmt='.3f', 
+            cmap='RdYlGn', 
+            vmin=lower_bound, 
+            vmax=upper_bound, 
+            cbar_kws={'label': 'Avg Eval Score'}, 
+            ax=ax,
+            linewidths=1,
+            linecolor='white'
+        )
+        ax.set_title('A. OVERALL PERFORMANCE (Avg Score)', fontsize=14, fontweight='bold', loc='left', pad=15)
+        ax.set_xlabel('Attention Mechanism', fontweight='bold')
+        ax.set_ylabel('Algorithm', fontweight='bold')
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Could not generate heatmap: {e}", ha='center')
+
+    # --- Panel B: Model Performance (Grouped Bar with Error Bars) ---
+    ax = axs[1]
+    try:
+        # Horizontal Grouped Bar Chart
+        # y = Attention, x = Score, hue = Algo
+        sns.barplot(
+            data=results_df,
+            x='Eval_Score',
+            y='Attention Mechanism',
+            hue='Model',
+            errorbar='sd',  # Standard Deviation error bars
+            palette='viridis',
+            ax=ax,
+            orient='h',
+            capsize=0.1
+        )
+        ax.set_title('B. MODEL PERFORMANCE (by Attention & Algo)', fontsize=14, fontweight='bold', loc='left', pad=15)
+        ax.set_xlabel('Evaluation Score', fontweight='bold')
+        ax.set_ylabel('Attention Mechanism', fontweight='bold')
+        ax.set_xlim(lower_bound, 1.02) # Little bit of padding on right
+        ax.legend(title='Algorithm', bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, axis='x', linestyle='--', alpha=0.7)
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Could not generate model plot: {e}", ha='center')
+
+    # --- Panel C: Algorithm Performance (Bar with Error Bars) ---
+    ax = axs[2]
+    try:
+        sns.barplot(
+            data=results_df,
+            x='Model',
+            y='Eval_Score',
+            errorbar='sd',
+            palette='Blues_d',
+            ax=ax,
+            capsize=0.1
+        )
+        ax.set_title('C. ALGORITHM PERFORMANCE (Avg ± Std Dev)', fontsize=14, fontweight='bold', loc='left', pad=20)
+        ax.set_xlabel('Algorithm', fontweight='bold')
+        ax.set_ylabel('Evaluation Score', fontweight='bold')
+        ax.set_ylim(lower_bound, 1.02)
+        ax.grid(True, axis='y', linestyle='--', alpha=0.7)
+        
+        # Add values on top
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.3f', padding=3)
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Could not generate algo plot: {e}", ha='center')
+
+    # --- Panel D: Attention Mechanism Performance (Bar with Error Bars) ---
+    ax = axs[3]
+    try:
+        sns.barplot(
+            data=results_df,
+            x='Attention Mechanism',
+            y='Eval_Score',
+            errorbar='sd',
+            palette='Greens_d',
+            ax=ax,
+            capsize=0.1
+        )
+        ax.set_title('D. ATTENTION MECHANISM PERFORMANCE (Avg ± Std Dev)', fontsize=14, fontweight='bold', loc='left', pad=15)
+        ax.set_xlabel('Attention Mechanism', fontweight='bold')
+        ax.set_ylabel('Evaluation Score', fontweight='bold')
+        ax.set_ylim(lower_bound, 1.02)
+        ax.grid(True, axis='y', linestyle='--', alpha=0.7)
+        
+        # Add values on top
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.3f', padding=3)
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Could not generate attention plot: {e}", ha='center')
+
+    # Main Title
+    plt.suptitle(f"AutoRL Evaluation Analysis Report | Schema: {schema}", fontsize=20, fontweight='bold', y=0.98)
+    
+    # Save
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    att_label = "AM" if attention_mech else "NoAM"
+    filename = f"Analysis_Report_{schema}_{att_label}_{timestamp}.png"
+    filepath = os.path.join(results_dir, filename)
+    
+    try:
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        print(f"✓ Analysis report saved: {filepath}")
+    except Exception as e:
+        print(f"  [!] Failed to save report: {e}")
+    finally:
+        plt.close(fig)
+
 
 
 def main():
@@ -760,9 +952,9 @@ Examples:
         # Phase 3: Save results
         results_file = save_results(results_df, args.schema, args.attention_mechanism)
         
-        # Phase 4: Create heatmaps
-        print(f"\nGenerating heatmaps...")
-        create_heatmaps(results_df, args.schema, args.attention_mechanism)
+        # Phase 4: Create analysis report
+        print(f"\nGenerating analysis report...")
+        generate_analysis_report(results_df, args.schema, args.attention_mechanism)
         
         # Print summary
         print(f"\n{'='*80}")

@@ -1187,7 +1187,7 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
     # IAR = (1 +/- IAR_RANGE) * WEAR_THRESHOLD
     # IAR_RANGE is global (0.05)
     iar_margin = eval_wear_threshold * IAR_RANGE
-    IAR_lower = eval_wear_threshold - iar_margin
+    IAR_lower = eval_wear_threshold - 2*iar_margin  # Lower bound is 10% from wear threshold to allow timely replacement
     IAR_upper = eval_wear_threshold + iar_margin
     
     # 2. Load Data and Model
@@ -1258,12 +1258,16 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
     # Identify Natural Replacements (that are valid)
     natural_replacements_indices = []
     
+    # For checking actions below IAR lower - we do not want the 10% margin, 5% is good enough
+    #  Computation of IAR_lower = eval_wear_threshold - 2*iar_margin
+    IAR_lower_for_continue = eval_wear_threshold - iar_margin
+
     for i in range(full_data_len):
         wear = all_wear[i]
         action = all_actions[i]
         
         if action == 0: # Model suggests REPLACE
-            if wear < IAR_lower:
+            if wear < IAR_lower_for_continue:
                 # Logic 1: Ignore early replacements
                 final_actions[i] = 1 
             else:
@@ -1333,17 +1337,22 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
         
     # 5. Metrics & Results
     # T_wt: First timestep where wear > threshold
+    # t_lambda = point at which we desire 1st prediction, so at least 5% before wear threshold i.e. IAR_lower
+   
     t_wt_List = [i for i, w in enumerate(all_wear) if w > eval_wear_threshold]
     T_wt = t_wt_List[0] if t_wt_List else len(all_wear)
+
+    t_lambda_List = [i for i, w in enumerate(all_wear) if w >= IAR_lower]
+    t_lambda = t_lambda_List[0] if t_lambda_List else None
     
     # t_FR: First replacement (Natural or Override)
     # Find first action 0 in final_actions
     repl_indices = [i for i, a in enumerate(final_actions) if a == 0]
     t_FR = repl_indices[0] if repl_indices else None
     
-    # Lambda: T_wt - t_FR
+    # Lambda: t_lambda - t_FR
     if t_FR is not None:
-        lambda_metric = T_wt - t_FR
+        lambda_metric = t_lambda - t_FR
         tool_usage_pct = all_wear[t_FR] / eval_wear_threshold
         # Check violations
         # Violation = (wear > threshold) AND No Replacement Yet
