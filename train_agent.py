@@ -2,10 +2,15 @@
 # AutoRL: CLI Version - Train and Evaluate Agents
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
-# V.1.0: 11-Feb-2026: First commit
+# V.2.0: 14-Feb-2026: Eval and model discovery 
 # Usage: 
 # Training: train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 300 -AM 0
 # Evaluation: train_agent.py -V -S IEEE
+# python train_agent.py -S SIT -A PPO,A2C -E 200 -AM 0
+#   python train_agent.py -S IEEE -A PPO -E 300 -AM 1
+#   python train_agent.py -V -S IEEE  # Evaluate IEEE models
+#   python train_agent.py -D -S SIT   # Just list SIT models
+#   python train_agent.py  # Uses all defaults: SIT, PPO, 200 episodes, no attention 
 # ---------------------------------------------------------------------------------------
 print('\n\n--------------------------------------------------------------------------')
 print(' AutoRL CLI')
@@ -145,15 +150,15 @@ def train_agents(schema: str, algos: List[str], episodes: int, attention_mech: i
                     )
                     
                     if 'error' in result:
-                        print(f"  ✗ Training failed: {result['error']}")
+                        print(f"  [x] Training failed: {result['error']}")
                     else:
                         model_path = result['model_path']
                         trained_models[(algo, training_filename, att_short)] = model_path
-                        print(f"  ✓ Model saved: {model_path}")
+                        print(f"  [+] Model saved: {model_path}")
                         print(f"    Weighted Score: {result['Weighted Score']:.4f}")
                         
                 except Exception as e:
-                    print(f"  ✗ Training error: {str(e)}")
+                    print(f"  [x] Training error: {str(e)}")
     
     print(f"\n{'='*80}")
     print(f"Training complete. Total models trained: {len(trained_models)}")
@@ -195,72 +200,82 @@ def discover_trained_models(schema: str, models_dir: str = "models") -> Dict:
 
     count = 0
     # Walk through models dir
-    for filename in os.listdir(models_dir):
-        if filename.endswith(".zip"):
-            model_path = os.path.join(models_dir, filename)
-            model_base = os.path.splitext(model_path)[0] # remove .zip
-            metadata_path = model_base + "_metadata.json"
-            
-            algo = "Unknown"
-            training_file = "Unknown"
-            att_short = None
-            
-            # 1. Try Metadata first (Robust)
-            if os.path.exists(metadata_path):
+    try:
+        for filename in os.listdir(models_dir):
+            if filename.endswith(".zip"):
                 try:
-                    with open(metadata_path, 'r') as f:
-                        meta = json.load(f)
-                        
-                    algo = meta.get('algorithm', 'Unknown')
-                    training_file = meta.get('training_data', 'Unknown')
-                    att_full = meta.get('attention_mechanism')
+                    model_path = os.path.join(models_dir, filename)
+                    model_base = os.path.splitext(model_path)[0] # remove .zip
+                    metadata_path = model_base + "_metadata.json"
                     
-                    if att_full:
-                        att_short = attention_full_to_short.get(att_full, att_full)
+                    algo = "Unknown"
+                    training_file = "Unknown"
+                    att_short = None
+                    
+                    # 1. Try Metadata first (Robust)
+                    if os.path.exists(metadata_path):
+                        try:
+                            with open(metadata_path, 'r') as f:
+                                meta = json.load(f)
+                                
+                            algo = meta.get('algorithm', 'Unknown')
+                            training_file = meta.get('training_data', 'Unknown')
+                            att_full = meta.get('attention_mechanism')
+                            
+                            if att_full:
+                                att_short = attention_full_to_short.get(att_full, att_full)
+                            else:
+                                att_short = None
+                                
+                            # Filter by schema in training_file
+                            if schema not in training_file:
+                                continue
+
+                        except Exception as e:
+                            print(f"  [!] Error reading metadata for {filename}: {e}")
+                            continue
+                    
                     else:
-                        att_short = None
+                        # 2. Fallback: Parse filename
+                        # Format: Algo_TrainingData_... (e.g. PPO_IEEE_tiny_...)
+                        if schema not in filename:
+                            continue
+                            
+                        parts = filename.split('_')
+                        if len(parts) < 3:
+                             continue
                         
-                    # Filter by schema in training_file
-                    if schema not in training_file:
-                        continue
+                        algo = parts[0]
+                        # Guess training file - usually parts[1] is schema, parts[2] is suffix? 
+                        # e.g. IEEE_tiny -> parts[1]=IEEE, parts[2]=tiny
+                        # We can try to reconstruct but it's risky. 
+                        # Let's rely on the user having metadata for now, OR simplistic parsing.
+                        # If schema is IEEE, training file probably starts with IEEE
+                        training_file = f"{parts[1]}_{parts[2]}" if len(parts) >= 3 else f"{schema}_Unknown"
+                        
+                        # Check for attention suffix in filename
+                        if "_NW" in filename: att_short = "NW"
+                        elif "_DL" in filename: att_short = "DL"
+                        elif "_TP" in filename: att_short = "TP"
+                        elif "_MH" in filename: att_short = "MH"
+                        elif "_SA" in filename: att_short = "SA"
+                        elif "_HY" in filename: att_short = "HY"
+                    
+                    # Add to dict
+                    key = (algo, training_file, att_short)
+                    trained_models[key] = model_path
+                    count += 1
+                    
+                    att_label = f" ({att_short})" if att_short else ""
+                    print(f"  Found: {algo} - {training_file}{att_label}")
 
                 except Exception as e:
-                    print(f"  ⚠ Error reading metadata for {filename}: {e}")
-                    continue
-            
-            else:
-                # 2. Fallback: Parse filename
-                # Format: Algo_TrainingData_... (e.g. PPO_IEEE_tiny_...)
-                if schema not in filename:
-                    continue
-                    
-                parts = filename.split('_')
-                if len(parts) < 3:
+                     print(f"  [!] Skipped {filename}: {e}")
                      continue
-                
-                algo = parts[0]
-                # Guess training file - usually parts[1] is schema, parts[2] is suffix? 
-                # e.g. IEEE_tiny -> parts[1]=IEEE, parts[2]=tiny
-                # We can try to reconstruct but it's risky. 
-                # Let's rely on the user having metadata for now, OR simplistic parsing.
-                # If schema is IEEE, training file probably starts with IEEE
-                training_file = f"{parts[1]}_{parts[2]}" if len(parts) >= 3 else f"{schema}_Unknown"
-                
-                # Check for attention suffix in filename
-                if "_NW" in filename: att_short = "NW"
-                elif "_DL" in filename: att_short = "DL"
-                elif "_TP" in filename: att_short = "TP"
-                elif "_MH" in filename: att_short = "MH"
-                elif "_SA" in filename: att_short = "SA"
-                elif "_HY" in filename: att_short = "HY"
-            
-            # Add to dict
-            key = (algo, training_file, att_short)
-            trained_models[key] = model_path
-            count += 1
-            
-            att_label = f" ({att_short})" if att_short else ""
-            print(f"  Found: {algo} - {training_file}{att_label}")
+
+    except Exception as e:
+        print(f"ERROR: Failed to list models directory: {e}")
+        return {}
 
     print(f"\nFound {count} models matching schema '{schema}'.")
     return trained_models
@@ -417,7 +432,7 @@ def create_evaluation_plot(eval_result: Dict, model_filename: str, test_filename
         return plot_filepath
         
     except Exception as e:
-        print(f"  ⚠ Could not create plot: {str(e)}")
+        print(f"  [!] Could not create plot: {str(e)}")
         return None
 
 
@@ -455,7 +470,7 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                 
                 # Check for errors
                 if eval_result.get('error', False):
-                    print(f"  ⚠ {test_filename}: Feature mismatch error")
+                    print(f"  [!] {test_filename}: Feature mismatch error")
                     continue
                 
                 # Determine if self-eval
@@ -481,15 +496,15 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                 }
                 
                 results.append(row)
-                print(f"  ✓ {test_filename}: Lambda={row['Lambda']}, Violations={row['Threshold Violations']}, Score={row['Eval_Score']:.4f}")
+                print(f"  [+] {test_filename}: Lambda={row['Lambda']}, Violations={row['Threshold Violations']}, Score={row['Eval_Score']:.4f}")
                 
                 # Create and save evaluation plot
                 plot_path = create_evaluation_plot(eval_result, model_filename, test_filename)
                 if plot_path:
-                    print(f"    📊 Plot saved: {plot_path}")
+                    print(f"    Plot saved: {plot_path}")
                 
             except Exception as e:
-                print(f"  ✗ {test_filename}: Evaluation error - {str(e)}")
+                print(f"  [x] {test_filename}: Evaluation error - {str(e)}")
     
     results_df = pd.DataFrame(results)
     
@@ -644,6 +659,8 @@ def main():
 Examples:
   python train_agent.py -S SIT -A PPO,A2C -E 200 -AM 0
   python train_agent.py -S IEEE -A PPO -E 300 -AM 1
+  python train_agent.py -V -S IEEE  # Evaluate IEEE models
+  python train_agent.py -D -S SIT   # Just list SIT models
   python train_agent.py  # Uses all defaults: SIT, PPO, 200 episodes, no attention
         """
     )
@@ -682,6 +699,13 @@ Examples:
         default=False,
         help="Evaluation only mode: Skip training and evaluate existing models (default: False)"
     )
+
+    parser.add_argument(
+        '-D', '--discover',
+        action='store_true',
+        default=False,
+        help="Discover mode: Only list trained models for the schema and exit (default: False)"
+    )
     
     args = parser.parse_args()
     
@@ -706,6 +730,11 @@ Examples:
     print(f"{'='*80}\n")
     
     try:
+        # Phase 0: Discovery Only
+        if args.discover:
+            discover_trained_models(args.schema)
+            sys.exit(0)
+
         # Phase 1: Training or Discovery
         if args.eval_only:
             trained_models = discover_trained_models(args.schema)
