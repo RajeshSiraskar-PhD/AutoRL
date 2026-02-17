@@ -18,3 +18,5 @@ Test*
 test*
 *.xls
 Evaluation_Results*
+*.ipynb
+checkpoint*
