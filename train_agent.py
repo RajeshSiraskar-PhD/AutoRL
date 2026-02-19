@@ -933,7 +933,6 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                     'Threshold Violations': eval_result.get('threshold_violations', 0),
                     'T_wt': eval_result.get('T_wt'),
                     't_FR': eval_result.get('t_FR'),
-                     'Model Override': 'Y' if eval_result.get('model_override', False) else 'N',
                     'Eval_Score': calculate_eval_score(eval_result)
                 }
                 
