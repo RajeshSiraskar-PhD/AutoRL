@@ -40,6 +40,7 @@ from datetime import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
 from typing import List, Dict, Tuple, Optional
 import glob
 import sqlite3
@@ -841,7 +842,7 @@ def create_evaluation_plot(eval_result: Dict, model_filename: str, test_filename
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='white', secondary_y=False)
         
         # Save plot
-        plot_filename = f"{model_filename}_{test_filename}_Eval.png"
+        plot_filename = f"{model_filename}_Eval_{test_filename}.png"
         plot_filepath = os.path.join(results_dir, plot_filename)
         
         fig.write_image(plot_filepath, width=1200, height=600)
@@ -919,7 +920,7 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                 att_full_name = attention_map.get(att_short, att_short) if att_short else 'None'
 
                 row = {
-                    'Model': f"{algo}",
+                    'Algorithm': f"{algo}",
                     'Attention Mechanism': att_full_name,
                     'Learning Rate': lr if lr is not None else "N/A",
                     'Gamma': gm if gm is not None else "N/A",
@@ -932,7 +933,7 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                     'Threshold Violations': eval_result.get('threshold_violations', 0),
                     'T_wt': eval_result.get('T_wt'),
                     't_FR': eval_result.get('t_FR'),
-                    'Model Override': 'Y' if eval_result.get('model_override', False) else 'N',
+                     'Model Override': 'Y' if eval_result.get('model_override', False) else 'N',
                     'Eval_Score': calculate_eval_score(eval_result)
                 }
                 
@@ -1047,6 +1048,83 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     
     # Sort rows alphabetically for consistent ordering
     heatmap_data = heatmap_data.sort_index()
+    # Build friendly labels for model rows by reading each model's _metadata.json file
+    try:
+        # Attention mechanism code mapping (metadata value -> short display code)
+        att_code_map = {
+            'multi_head':          'MH',
+            'multi-head':          'MH',
+            'multihead':           'MH',
+            'multiHead':           'MH',
+            'nadaraya_watson':     'NW',
+            'nadaraya-watson':     'NW',
+            'nadaraya':            'NW',
+            'nw':                  'NW',
+            'self_attention':      'SA',
+            'self-attention':      'SA',
+            'selfattention':       'SA',
+            'selfattn':            'SA',
+            'temporal':            'TP',
+        }
+
+        # Best-performing test column per model row
+        best_tests = heatmap_data.idxmax(axis=1).fillna('N/A')
+
+        # Helper: format LR as e-notation without leading zeros (0.0005 -> 5e-4)
+        def fmt_lr(x):
+            if x is None:
+                return None
+            try:
+                xv = float(x)
+                s = "{:.0e}".format(xv)
+                s = re.sub(r'e([+-])0+(\d+)', r'e\1\2', s)
+                return s
+            except Exception:
+                return str(x)
+
+        friendly_labels = []
+        for model_file in heatmap_data.index:
+            meta = {}
+            meta_path = os.path.join("models", f"{model_file}_metadata.json")
+            try:
+                with open(meta_path, 'r') as f:
+                    meta = json.load(f)
+            except Exception:
+                pass  # If JSON missing, meta stays empty and we fall back gracefully
+
+            algo        = meta.get('algorithm', model_file)
+            att_raw     = meta.get('attention_mechanism') or ''
+            lr_raw      = meta.get('learning_rate')
+            gm_raw      = meta.get('gamma')
+            training    = str(meta.get('training_data', '')).replace('_', '-')
+
+            # Resolve attention short code
+            att_code = att_code_map.get(str(att_raw).lower().strip(), '') if att_raw else ''
+
+            lr_str = fmt_lr(lr_raw) if lr_raw is not None else None
+            gm_str = str(gm_raw) if gm_raw is not None else None
+
+            best = str(best_tests.loc[model_file]).replace('_', '-')
+
+            # Format: Algo [AM] LR Gamma Training / BestTest
+            parts = [str(algo)]
+            if att_code:
+                parts.append(att_code)
+            if lr_str:
+                parts.append(lr_str)
+            if gm_str:
+                parts.append(gm_str)
+            if training:
+                parts.append(training)
+
+            label = ' '.join(parts) + ' / ' + best
+            friendly_labels.append(label)
+
+        # Replace heatmap row index with friendly labels for display
+        heatmap_data.index = friendly_labels
+    except Exception:
+        # Fall back to original model file names if anything goes wrong
+        pass
     
     # Create single comprehensive heatmap with larger figsize for all agents
     num_agents = len(heatmap_data)
@@ -1070,7 +1148,7 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     
     ax.set_title(f'Evaluation Score Heatmap\nSchema: {schema}', fontsize=14, fontweight='bold')
     ax.set_xlabel('Test File', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Model File', fontsize=12, fontweight='bold')
+    ax.set_ylabel('RL PdM Model', fontsize=12, fontweight='bold')
     
     # Rotate x-axis labels (test files) to be horizontal for readability
     ax.set_xticklabels(ax.get_xticklabels(), rotation=0, ha='center', fontsize=10)
@@ -1156,7 +1234,7 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     try:
         # Aggregation
         pivot_data = results_df.pivot_table(
-            index='Model', 
+            index='Algorithm', 
             columns='Attention Mechanism', 
             values='Eval_Score', 
             aggfunc='mean'
@@ -1189,7 +1267,7 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
             data=results_df,
             x='Eval_Score',
             y='Attention Mechanism',
-            hue='Model',
+            hue='Algorithm',
             errorbar='sd',  # Standard Deviation error bars
             palette='viridis',
             ax=ax,
@@ -1210,7 +1288,7 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     try:
         sns.barplot(
             data=results_df,
-            x='Model',
+            x='Algorithm',
             y='Eval_Score',
             errorbar='sd',
             palette='Blues_d',
