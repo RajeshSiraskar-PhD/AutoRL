@@ -393,7 +393,7 @@ def get_schema_files(schema: str, data_dir: str = "data") -> List[str]:
 
 def train_agents(schema: str, algos: List[str], episodes: int, attention_mech: int, 
                  learning_rates: List[float], gammas: List[float], batch_id: str = None, 
-                 resume_mode: bool = False) -> Dict:
+                 resume_mode: bool = False, attention_types: List[str] = None) -> Dict:
     """
     Train agents on all data files of the specified schema with grid search over hyperparameters.
     
@@ -439,14 +439,12 @@ def train_agents(schema: str, algos: List[str], episodes: int, attention_mech: i
         'SA': 'SelfAttn'      # SelfAttn
     }
     
-    # Define attention types to train when AM=1
-    attention_types = []
-    if attention_mech == 1:
-        # Train with 4 attention mechanisms: NW, TP, MH, SA (short forms for display)
-        attention_types = ['NW', 'TP', 'MH', 'SA']
-    else:
-        # Train without attention
-        attention_types = [None]
+    # Use caller-supplied attention_types if provided; otherwise derive from attention_mech flag
+    if attention_types is None:
+        if attention_mech == 1:
+            attention_types = ['NW', 'TP', 'MH', 'SA']
+        else:
+            attention_types = [None]
     
     if resume_mode:
         # Load pending tasks from database
@@ -854,13 +852,14 @@ def create_evaluation_plot(eval_result: Dict, model_filename: str, test_filename
         return None
 
 
-def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
+def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bool = False) -> pd.DataFrame:
     """
     Evaluate all trained models on all data files of the schema.
     
     Args:
         schema: 'SIT' or 'IEEE'
         trained_models: Dictionary mapping (algo, training_file, attention_type, lr, gamma) -> model_path
+        skip_individual_plots: If True, skip per-model evaluation plots (only Eval_Results, Analysis, Heatmap are saved)
     
     Returns:
         DataFrame with evaluation results
@@ -940,9 +939,10 @@ def evaluate_agents(schema: str, trained_models: Dict) -> pd.DataFrame:
                 print(f"  [+] {test_filename}: Lambda={row['Lambda']}, Violations={row['Threshold Violations']}, Score={row['Eval_Score']:.4f}")
                 
                 # Create and save evaluation plot
-                plot_path = create_evaluation_plot(eval_result, model_filename, test_filename)
-                if plot_path:
-                    print(f"    Plot saved: {plot_path}")
+                if not skip_individual_plots:
+                    plot_path = create_evaluation_plot(eval_result, model_filename, test_filename)
+                    if plot_path:
+                        print(f"    Plot saved: {plot_path}")
                 
             except Exception as e:
                 print(f"  [x] {test_filename}: Evaluation error - {str(e)}")
@@ -1173,9 +1173,9 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     
     Creates a detailed 4-panel summary:
     1. Overall Performance Matrix (Heatmap)
-    2. Model Performance by Attention (Grouped Bar Chart)
-    3. Algorithm Performance (Bar Chart with Std Dev)
-    4. Attention Mechanism Performance (Bar Chart with Std Dev)
+    2. Model Performance by Attention (Grouped Bar Chart, vertical)
+    3. Algorithm Performance (Bar Chart with 68% CI)
+    4. Lambda Metric by Algorithm & Attention (Grouped Bar Chart)
     
     Args:
         results_df: DataFrame with evaluation results
@@ -1204,7 +1204,7 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     # Row 2, Col 1: Algo Performance
     # Row 2, Col 2: Attention Performance
     # Increased padding to prevent overlap
-    gs = fig.add_gridspec(2, 2, hspace=0.6, wspace=0.3)
+    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.15)
     
     axs = []
     axs.append(fig.add_subplot(gs[0, 0])) # ax0: Heatmap
@@ -1228,6 +1228,10 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     
     print(f"  Axis limits: [{lower_bound:.2f}, {upper_bound:.2f}] (Min score: {min_score:.4f})")
 
+    # Canonical ordering for all plots
+    ALGO_ORDER = ['A2C', 'DQN', 'PPO', 'REINFORCE']
+    ATTN_ORDER = ['None', 'Nadaraya-Watson', 'Temporal', 'Self-Attention', 'Multi-Head']
+
     # --- Panel A: Overall Performance (Heatmap) ---
     ax = axs[0]
     try:
@@ -1238,6 +1242,10 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
             values='Eval_Score', 
             aggfunc='mean'
         )
+        # Reorder rows/cols
+        pivot_rows = [r for r in ALGO_ORDER if r in pivot_data.index]
+        pivot_cols = [c for c in ATTN_ORDER if c in pivot_data.columns]
+        pivot_data = pivot_data.loc[pivot_rows, pivot_cols]
         
         sns.heatmap(
             pivot_data, 
@@ -1260,25 +1268,26 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     # --- Panel B: Model Performance (Grouped Bar with Error Bars) ---
     ax = axs[1]
     try:
-        # Horizontal Grouped Bar Chart
-        # y = Attention, x = Score, hue = Algo
+        # Vertical Grouped Bar Chart
+        # x = Attention, y = Score, hue = Algo
         sns.barplot(
             data=results_df,
-            x='Eval_Score',
-            y='Attention Mechanism',
+            x='Attention Mechanism',
+            y='Eval_Score',
             hue='Algorithm',
-            errorbar='sd',  # Standard Deviation error bars
+            order=[o for o in ATTN_ORDER if o in results_df['Attention Mechanism'].values],
+            hue_order=[o for o in ALGO_ORDER if o in results_df['Algorithm'].values],
+            errorbar=('ci', 68),  # 1-sigma (68%) confidence interval
             palette='viridis',
             ax=ax,
-            orient='h',
             capsize=0.1
         )
         ax.set_title('B. MODEL PERFORMANCE (by Attention & Algo)', fontsize=14, fontweight='bold', loc='left', pad=15)
-        ax.set_xlabel('Evaluation Score', fontweight='bold')
-        ax.set_ylabel('Attention Mechanism', fontweight='bold')
-        ax.set_xlim(lower_bound, 1.02) # Little bit of padding on right
-        ax.legend(title='Algorithm', bbox_to_anchor=(1.05, 1), loc='upper left')
-        ax.grid(True, axis='x', linestyle='--', alpha=0.7)
+        ax.set_xlabel('Attention Mechanism', fontweight='bold')
+        ax.set_ylabel('Evaluation Score', fontweight='bold')
+        ax.set_ylim(lower_bound, 1.02)  # Little bit of padding on top
+        ax.legend(title='Algorithm', loc='lower right')
+        ax.grid(True, axis='y', linestyle='--', alpha=0.7)
     except Exception as e:
         ax.text(0.5, 0.5, f"Could not generate model plot: {e}", ha='center')
 
@@ -1289,12 +1298,13 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
             data=results_df,
             x='Algorithm',
             y='Eval_Score',
-            errorbar='sd',
+            order=[o for o in ALGO_ORDER if o in results_df['Algorithm'].values],
+            errorbar=('ci', 68),  # 1-sigma (68%) confidence interval
             palette='Blues_d',
             ax=ax,
             capsize=0.1
         )
-        ax.set_title('C. ALGORITHM PERFORMANCE (Avg ± Std Dev)', fontsize=14, fontweight='bold', loc='left', pad=20)
+        ax.set_title('C. ALGORITHM PERFORMANCE (Avg ± CI)', fontsize=14, fontweight='bold', loc='left', pad=20)
         ax.set_xlabel('Algorithm', fontweight='bold')
         ax.set_ylabel('Evaluation Score', fontweight='bold')
         ax.set_ylim(lower_bound, 1.02)
@@ -1306,29 +1316,28 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     except Exception as e:
         ax.text(0.5, 0.5, f"Could not generate algo plot: {e}", ha='center')
 
-    # --- Panel D: Attention Mechanism Performance (Bar with Error Bars) ---
+    # --- Panel D: Lambda Metric by Algorithm & Attention (Grouped Bar) ---
     ax = axs[3]
     try:
         sns.barplot(
             data=results_df,
             x='Attention Mechanism',
-            y='Eval_Score',
-            errorbar='sd',
-            palette='Greens_d',
+            y='Lambda',
+            hue='Algorithm',
+            order=[o for o in ATTN_ORDER if o in results_df['Attention Mechanism'].values],
+            hue_order=[o for o in ALGO_ORDER if o in results_df['Algorithm'].values],
+            errorbar=('ci', 68),  # 1-sigma (68%) confidence interval
+            palette='viridis',
             ax=ax,
             capsize=0.1
         )
-        ax.set_title('D. ATTENTION MECHANISM PERFORMANCE (Avg ± Std Dev)', fontsize=14, fontweight='bold', loc='left', pad=15)
+        ax.set_title('D. LAMBDA METRIC (by Attention & Algo)', fontsize=14, fontweight='bold', loc='left', pad=15)
         ax.set_xlabel('Attention Mechanism', fontweight='bold')
-        ax.set_ylabel('Evaluation Score', fontweight='bold')
-        ax.set_ylim(lower_bound, 1.02)
+        ax.set_ylabel('Lambda (Avg ± CI 68%)', fontweight='bold')
         ax.grid(True, axis='y', linestyle='--', alpha=0.7)
-        
-        # Add values on top
-        for container in ax.containers:
-            ax.bar_label(container, fmt='%.3f', padding=3)
+        ax.legend(title='Algorithm', loc='upper right')
     except Exception as e:
-        ax.text(0.5, 0.5, f"Could not generate attention plot: {e}", ha='center')
+        ax.text(0.5, 0.5, f"Could not generate lambda plot: {e}", ha='center')
 
     # Main Title
     plt.suptitle(f"AutoRL Evaluation Analysis Report | Schema: {schema}", fontsize=20, fontweight='bold', y=0.98)
@@ -1388,10 +1397,10 @@ Examples:
     
     parser.add_argument(
         '-AM', '--attention-mechanism',
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="Apply attention mechanism: 1 (yes) or 0 (no) (default: 0)"
+        type=str,
+        default='0',
+        choices=['0', '1', 'NW', 'TP', 'MH', 'SA'],
+        help="Attention mechanism: 0=off, 1=all four types (NW/TP/MH/SA), or specify one type (default: 0)"
     )
     
     parser.add_argument(
@@ -1410,9 +1419,14 @@ Examples:
     
     parser.add_argument(
         '-V', '--eval-only',
-        action='store_true',
-        default=False,
-        help="Evaluation only mode: Skip training and evaluate existing models (default: False)"
+        nargs='?',
+        type=int,
+        const=0,
+        default=None,
+        choices=[0, 1],
+        metavar='PLOT_MODE',
+        help="Evaluation only mode: Skip training and evaluate existing models. "
+             "PLOT_MODE 0 (default) = all plots; 1 = skip individual model eval plots (only Eval_Results, Analysis, Heatmap)"
     )
 
     parser.add_argument(
@@ -1426,6 +1440,20 @@ Examples:
     
     # Parse algorithms
     algos = [algo.strip().upper() for algo in args.algos.split(',')]
+    
+    # Parse attention mechanism value
+    VALID_AM_TYPES = ['NW', 'TP', 'MH', 'SA']
+    am_value = args.attention_mechanism
+    if am_value == '0':
+        attention_mech = 0
+        attention_types = [None]
+    elif am_value == '1':
+        attention_mech = 1
+        attention_types = VALID_AM_TYPES
+    else:
+        # Specific type e.g. 'MH', 'NW', 'TP', 'SA'
+        attention_mech = 1
+        attention_types = [am_value.upper()]
     
     # Validate algorithms
     valid_algos = ['PPO', 'A2C', 'DQN', 'REINFORCE']
@@ -1464,12 +1492,17 @@ Examples:
     print(f"  Episodes: {args.episodes}")
     print(f"  Learning Rates: {learning_rates}")
     print(f"  Gamma Values: {gammas}")
-    print(f"  Attention Mechanism: {'ON' if args.attention_mechanism else 'OFF'}")
+    if am_value == '0':
+        am_display = 'OFF'
+    elif am_value == '1':
+        am_display = 'ALL (NW, TP, MH, SA)'
+    else:
+        am_display = f'Single type: {am_value.upper()}'
+    print(f"  Attention Mechanism: {am_display}")
     
     # Calculate total training runs
     total_runs = len(algos) * len(learning_rates) * len(gammas)
-    if args.attention_mechanism:
-        total_runs *= 4  # 4 attention types
+    total_runs *= len(attention_types)  # 1 when off or single type, 4 when all
     print(f"  Total training runs (per file): {total_runs}")
     print(f"{'='*80}\n")
     
@@ -1486,7 +1519,7 @@ Examples:
         batch_id = None
         resume_mode = False
         
-        if not args.discover and not args.eval_only:
+        if not args.discover and args.eval_only is None:
             incomplete_batch = get_incomplete_batch()
             if incomplete_batch:
                 print(f"\n{'='*80}")
@@ -1513,7 +1546,10 @@ Examples:
                         args.episodes = incomplete_batch['episodes']
                         learning_rates = [float(x) for x in incomplete_batch['learning_rates'].split(',')]
                         gammas = [float(x) for x in incomplete_batch['gammas'].split(',')]
-                        args.attention_mechanism = incomplete_batch['attention_mech']
+                        attention_mech = incomplete_batch['attention_mech']
+                        # Resume: pending tasks already have attention_type in DB; pass all types
+                        # for context but resume_mode will rebuild queue from DB anyway
+                        attention_types = VALID_AM_TYPES if attention_mech == 1 else [None]
                         
                         print(f"\n✓ Resuming batch: {batch_id}\n")
                         update_batch_status(batch_id, 'WIP')
@@ -1523,7 +1559,7 @@ Examples:
                     print(f"\n\n✓ Starting new batch\n")
         
         # Phase 0.6: Create new batch if not resuming
-        if not resume_mode and not args.discover and not args.eval_only:
+        if not resume_mode and not args.discover and args.eval_only is None:
             batch_id = create_batch_id()
             create_batch_record(
                 batch_id=batch_id,
@@ -1532,7 +1568,7 @@ Examples:
                 episodes=args.episodes,
                 lrs=learning_rates,
                 gammas=gammas,
-                attention_mech=args.attention_mechanism
+                attention_mech=attention_mech
             )
             update_batch_status(batch_id, 'WIP')
             print(f"✓ Created new batch: {batch_id}\n")
@@ -1543,18 +1579,19 @@ Examples:
             sys.exit(0)
 
         # Phase 2: Training or Discovery
-        if args.eval_only:
+        if args.eval_only is not None:
             trained_models = discover_trained_models(args.schema)
         else:
             trained_models = train_agents(
                 schema=args.schema,
                 algos=algos,
                 episodes=args.episodes,
-                attention_mech=args.attention_mechanism,
+                attention_mech=attention_mech,
                 learning_rates=learning_rates,
                 gammas=gammas,
                 batch_id=batch_id,
-                resume_mode=resume_mode
+                resume_mode=resume_mode,
+                attention_types=attention_types
             )
         
         if not trained_models:
@@ -1564,7 +1601,8 @@ Examples:
             sys.exit(1)
         
         # Phase 3: Evaluation
-        results_df = evaluate_agents(schema=args.schema, trained_models=trained_models)
+        skip_individual_plots = (args.eval_only == 1)
+        results_df = evaluate_agents(schema=args.schema, trained_models=trained_models, skip_individual_plots=skip_individual_plots)
         
         if results_df.empty:
             print("ERROR: Evaluation produced no results.")
@@ -1573,14 +1611,14 @@ Examples:
             sys.exit(1)
         
         # Phase 4: Save results
-        results_file = save_results(results_df, args.schema, args.attention_mechanism)
+        results_file = save_results(results_df, args.schema, attention_mech)
         
         # Phase 5: Create analysis report and heatmaps
         print(f"\nGenerating heatmaps...")
-        create_heatmaps(results_df, args.schema, args.attention_mechanism)
+        create_heatmaps(results_df, args.schema, attention_mech)
 
         print(f"\nGenerating analysis report...")
-        generate_analysis_report(results_df, args.schema, args.attention_mechanism)
+        generate_analysis_report(results_df, args.schema, attention_mech)
         
         # Phase 6: Mark batch as complete
         if batch_id:
