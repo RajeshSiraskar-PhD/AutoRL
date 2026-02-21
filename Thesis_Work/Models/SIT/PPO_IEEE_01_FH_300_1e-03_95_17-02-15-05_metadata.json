@@ -1,0 +1,17 @@
+{
+  "algorithm": "PPO",
+  "attention_mechanism": null,
+  "training_data": "IEEE_01",
+  "learning_rate": 0.001,
+  "gamma": 0.95,
+  "episodes": 300,
+  "finite_horizon": true,
+  "training_date": "17-02-15-05",
+  "avg_wear_margin": 100.91034655333334,
+  "avg_reward": -0.39299999840557576,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.47643587996748404,
+  "t_ss": 15.0,
+  "sigma_ss": 0.3198318197359638
+}

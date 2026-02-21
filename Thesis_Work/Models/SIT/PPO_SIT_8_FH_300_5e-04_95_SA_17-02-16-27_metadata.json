@@ -1,0 +1,17 @@
+{
+  "algorithm": "PPO",
+  "attention_mechanism": "SelfAttn",
+  "training_data": "SIT_8",
+  "learning_rate": 0.0005,
+  "gamma": 0.95,
+  "episodes": 300,
+  "finite_horizon": true,
+  "training_date": "17-02-16-27",
+  "avg_wear_margin": 245.94863333333333,
+  "avg_reward": -0.3913333317140738,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.3618698634564337,
+  "t_ss": 15.0,
+  "sigma_ss": 0.7338141662113602
+}

@@ -1,0 +1,17 @@
+{
+  "algorithm": "REINFORCE",
+  "attention_mechanism": null,
+  "training_data": "SIT_15",
+  "learning_rate": 0.0005,
+  "gamma": 0.9,
+  "episodes": 300,
+  "finite_horizon": true,
+  "training_date": "17-02-15-41",
+  "avg_wear_margin": 243.07,
+  "avg_reward": -0.4093333319822947,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.3622423044098731,
+  "t_ss": 15.0,
+  "sigma_ss": 5.684341886080802e-14
+}

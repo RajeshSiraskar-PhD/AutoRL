@@ -1,0 +1,164 @@
+I want to create presentation slides on the following: What I want you to do is create a bulleted list of the important technical details - theory and how it was implemented. Do you best to keep the points less than 12-15 as these are slides. If it is complex subject and we need two slides to explain so be it. Create latex version of formulas where you have to
+- PPO basic (no-attention) version
+- REINFORCE basic (no-attention) version
+- Attention mechanism in general - 1 slide
+- Attention mechanisms  - one slide per AM technique used. How it adds to the plain vanila base version of PPO and REINFORCE
+
+========================================
+
+We are now ready to create a CLI version of the training and evaluation process train_agent.py.
+
+## The CLI should be designed to take the following parameters:
+1. Data schema (short 'S'): 'SIT' or 'IEEE', 'SIT' default
+2. List of algos (short 'A'): - e,g, PPO, A2C, default = PPO only
+3. Episodes 'ep' (short 'E') = default 200
+4. A flag AM = 1 or 0. This flag indicates if Attention Mech. is to be applied too, default = 0
+
+## Obtaining Training and evaluation data: 
+
+- Training: If schema=SIT, then take all files one by one from the data\SIT folder for training. These create agents that can work on SIT data. 
+- Evaluation: Each of the trained agent is evaluated on *all* the data files, taken one by one, from the data\SIT folder. 
+- This creates a matrix of results for each agent trained and evaluated on SIT data.
+- Similarly for IEEE use files from data\IEEE folder for training and evaluation.
+
+Evaluation Metrics:
+- Store results in the \results folder
+- One summary Evaluation_Results file with date-time as a .csv file
+- Metrics to store: 'Tool Usage %', 'Lambda': 'Threshold Violations', 'T_wt and 't FR' and 'Eval_Score'
+- Also store training file and test file used 
+- Additional two columns: "Model Override" and "Self eval".
+- If the model did not predict any replacement and a suggestion was made via Model Over ride, put a 'Y' under 'Model Override' column, else put a 'N'
+- 'Self-eval': If the agent was trained on a file ABC and tested on the same file, put a Y here
+
+- Eval_Score is a Weighted score:
+  - higher the tools usage the better = upto 100, above 100 is also not desired; 
+  - lower the lambda te better, 0 is best
+  - lower violations the better
+- Create a weighted eval score with following weights: tool-usage: 50%, lambda: 30%, violations: 20%.
+
+Heat Map as .png in the results folder:
+- Plot a heatmap for EVERY agent evalauted
+- Models on vertical axis and test files horz. axis
+- Color: Green 1.0, Yello: 0.5, Red 0.0
+
+IMPORTANT NOTES: 
+- When the schema is set to IEEE, you do NOT attempt train or test on SIT folder data! and vice-versa. Because, IEEE and SIT data and state definitions are differernt and NOT compatible with one another
+
+
+=================================================================================
+Pipleine crash - Checkpoint mechanism
+=================================================================================
+
+train_agent.py **training** Pipleine crash mitigation and checkpoint mechanism:
+
+Lets now make train_agent.py robust against laptop crash during training.
+
+1. You have the queue.
+2. Maintain a database (.csv good enough? or local Lite SQL better?) of the training queue - with all hyper parms setting, a date time stamp, a UNIQUE 'training pipeline batch' ID and the model file name if successfully created and saved.
+3. Allways ensure all the output results - analysis, eval report and heatmap are also marked as steps to be performed as part of the batch  process
+3. For the current setting create a new batch ID
+4. Store the queue settings - Status = 'Queued'
+5. As each model is trained and saved - then mark 'Done'
+6. For each planned report, if created and stored, mark 'Done'
+7. Finally have a final step called "BATCH RUN" - when queued this will be 'WIP', when all steps done, mark this 'Done'
+8. If the laptop crashes - here is what happens:
+9. Anytime training is initiated in CLI, FIRST always check this checkpoint database for the last batch id BATCH RUN task.
+10. Was the last batch run successful is it flipped fro WIP to Done? if NOT first start from where you left! 
+
+
+=================================================================================
+EVALUATION OF PRE TRAINED MODELS -V CLI option
+=================================================================================
+
+
+@train_agent.py#L585-597 
+
+add capability to evalaute already trained agents - so basically I should be able to run this command:
+train_agent.py -V -S IEEE
+
+Where -V is short for 'eval', -S is the existing paramater i.e. data-schema. What this command should do is:
+
+1. Get all IEEE models from \models\IEEE folder
+2. Get all IEEE test files from \data\IEEE folder
+3. Now run the evaluation of all models on all data files - create the .csv report and the plot images as before
+		
+I had a function called adjusted_evaluate_model. It has totally messed up. So I want you to make a fresh new attempt. We will now rename it to 'evaluate_trained_model'. I have deleted the function adjusted_evaluate_model() from rl_pdm.py, so you are not biased with the existing implementation. Should I need 
+to study it - ask me questions and I will paste snippets from it.
+
+adjusted_evaluate_model is called in app.py on line 681.  train_agent.py the CLI version of our code also repends on the correct functioning of this new function evaluate_trained_model. So please read instructions carefully, think hard and deep and then implement!
+
+Instructions for implementning evaluate_trained_model:
+
+Call: evaluate_trained_model(model_path, data_file, wear_threshold=None)
+
+Ideal Action Region (IAR):
+- IAR is a region around the WEAR_THRESHOLD, within which replacements should ideally be suggested. 
+- WEAR_THRESHOLD is the ISO standard, used for evaluation and display (often = 300)
+- IAR (Ideal Action Region) = (1 +/- IAR_RANGE) * WEAR_THRESHOLD
+
+Logic:
+1. First and foremost, any REPLACEMENTs before IAR is ignored (recorded as CONTINUE in display)
+2. Replacements within IAR are counted and displayed
+3. Replacements beyond upper IAR bound right upto end of life (end of records), are counted and displayed
+4. If a replacement is made, before crossing the upper IAR bound, there are no violations (i.e. correct replacement was suggested)
+5. If there was NO valid replacement within the IAR, then the tool wear will cross the threshold. We will override the model and suggest a replacement. These are called model-overrides and set MODEL_OVERRIDE = True
+6. When a model override is suggested, there could be two cases:
+	Case-1: No natural replacements were suggested, hence only model override to be suggested
+	Case-2: Natural replacements available, but only beyond the IAR upper bound. Model override needs to be suggested within the IAR band
+7. Case-1: Suggest the very first model override at a randomly sampled point within the IAR. Once this is done, now collect all time indices after this point right up to end of life. In these time indices, sample 70% time steps and mark them for model overrides.
+8. Case-2: Suggest the very first model override at a randomly sampled point within the IAR, and then for every point between this and the first naturally suggested point. Stop manual overrides at this point, as we have natural replacements, we do not need model overrides beyond this.	
+9. IMPORTANT: Under NO circumstances, will we override model, if a valid replacement was suggested by the model iteself within IAR. 
+10. Important for back-compatability: In the metrics to be returned, earlier with adjusted_evaluate_model(), we had 'override_timestep' and I think it was a single value, NOW - we are converting that into 'override_timesteps', so a it is now a list of multpiple timestep values.
+
+Refer to two images pasted to see how it should look, both case-1 and case-2. I have used yellow colour to indicate model overrides, and red for natural replacements.
+
+Evaluations metrics:
+-------------------
+'timesteps': [list of timesteps],
+'tool_wear': [list of tool wear values],
+'actions': [list of final adjusted actions (0 or 1)],
+'wear_threshold': WEAR_THRESHOLD value (ISO standard),
+'total_replacements': number of valid replacements,
+'threshold_violations': number of violations (wear > WEAR_THRESHOLD with no replacement),
+'model_override': bool - True if forced replacement was added,
+'override_timesteps': [list of timesteps where override occurred (None if no override)]
+
+T_wt = timestep where the tool-wear crosses the WEAR_THRESHOLD
+t_FR = timestep where the first replacement (natural or model-override) was made
+Lambda (λ): T_wt - t_FR 
+min_tool_usage_pct = minimum tool usage %. If we make the replacement too early this % will be low, and 100% as close as to WEAR_THRESHOLD as possible
+
+Expected return values:  
+
+return {
+    # Evaluation Results
+    'timesteps': timesteps,
+    'tool_wear': tool_wear_values,
+    'actions': actions_taken,
+    'wear_threshold': eval_wear_threshold,
+    'T_wt': T_wt,
+    't_FR': t_FR,
+    'lambda': lambda_metric,
+    'tool_usage_pct': tool_usage_pct,
+    'threshold_violations': threshold_violations,
+    'model_override': model_override,
+    'override_timesteps': override_timesteps,
+    'override_indices': override_indices_list,
+    'IAR_lower': IAR_lower,
+    'IAR_upper': IAR_upper,
+    # Training Metadata
+    'training_metadata': training_metadata
+}
+
+===========================================
+I see you going in circles - let me clear the instructions:
+
+We want to modify the AM CLI param used for attention models training
+
+Existing options are - and e.g. of alog setting is -A PPO,A2C:
+
+With '-AM 0', we just run the models using base algos. With '-AM 1' , we first train with base algos PPO and A2C, then we train them with all the variants of attention mechanisms. Is this much clear?
+
+Now here's what we want to add: An option '-AM 2'. Lets say I have done some base training and I am happy with A2C with some LR and Gamma. I do not want to retrain the base algos, i am already happy with A2C. Now I just want the attention mech variants for A2C. So I will use this option and **directly** create models with atten. mech without having to re-train the base ones
+
+Is this better? Do you get this?

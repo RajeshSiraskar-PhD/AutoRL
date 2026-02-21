@@ -1,0 +1,17 @@
+{
+  "algorithm": "REINFORCE",
+  "attention_mechanism": null,
+  "training_data": "IEEE_06",
+  "learning_rate": 0.001,
+  "gamma": 0.95,
+  "episodes": 300,
+  "finite_horizon": true,
+  "training_date": "17-02-15-05",
+  "avg_wear_margin": 136.99695045,
+  "avg_reward": -0.39566666511197884,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.42368801592822797,
+  "t_ss": 15.0,
+  "sigma_ss": 0.5271924109576134
+}
