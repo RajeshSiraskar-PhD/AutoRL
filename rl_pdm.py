@@ -2,9 +2,7 @@
 # AutoRL: Auto-train Predictive Maintenance Agents 
 # Author: Rajesh Siraskar
 # RL for PdM code
-# V.1.0: 06-Feb-2026: First commit
-# V.1.2: Stable ver. Model eval save report | 09-Feb-2026
-# V.2.0: 14-Feb-2026: Stable ver. Eval plots fixed for tool-replacements*
+# V.5.0: 22-Feb-2026 Re-baselined version
 # ---------------------------------------------------------------------------------------
 
 import pandas as pd
@@ -45,6 +43,7 @@ GAMMA_DEFAULT = 0.99
 SMOOTH_WINDOW = 10
 FIXED_X_AXIS_LENGTH = True # Validation: Train for fixed episodes?
 IAR_RANGE = 0.05 # IAR bounds are ±5% across Threshold value
+LAMBDA = 0.9 # Saxena's metric allows replacement logistics, so t_lambda_metric = t_FR + LAMBDA * (t_lambda - t_FR)
 
 now = datetime.now()
 date_time = now.strftime("%d-%m-%H-%M")
@@ -1337,9 +1336,12 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
     # 5. Metrics & Results
     # T_wt: First timestep where wear > threshold
     # t_lambda = point at which we desire 1st prediction, so at least 5% before wear threshold i.e. IAR_lower
-   
+    
     t_wt_List = [i for i, w in enumerate(all_wear) if w > eval_wear_threshold]
     T_wt = t_wt_List[0] if t_wt_List else len(all_wear)
+
+    # Saxena
+    t_EOL = T_wt # Saxena's metric t_lambda  
 
     t_lambda_List = [i for i, w in enumerate(all_wear) if w >= IAR_lower]
     t_lambda = t_lambda_List[0] if t_lambda_List else None
@@ -1352,6 +1354,7 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
     # Lambda: t_lambda - t_FR
     if t_FR is not None:
         lambda_metric = abs(t_lambda - t_FR)
+        t_lambda_metric = t_FR + LAMBDA * (t_EOL - t_FR) # Saxena's Lambda point based on t_FR
         tool_usage_pct = all_wear[t_FR] / eval_wear_threshold
         # Check violations
         # Violation = (wear > threshold) AND No Replacement Yet

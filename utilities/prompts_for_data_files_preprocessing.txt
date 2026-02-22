@@ -1,0 +1,85 @@
+Folders:
+
+Tool_makers_report
+6. S1200_F35_D0.20
+	a1
+		Length (max)
+	a2
+	aN
+
+7. S1200_F20_D0.30
+
+8. S1200_F40_D0.25
+
+DAQ
+6. S1200_F35_D0.20
+7. S1200_F20_D0.30
+8. S1200_F40_D0.25
+
+
+Recording 1.csv
+- Sample into ['Vib_Spindle | Vib_Table | Sound_Spindle,Sound_table,X_Load_Cell | Y_Load_Cell | Z_Load_Cell | Current'] 
+- Delete all columns named 'Channel name'
+- Remove top 2 rows
+- Row 3 is column headers
+- Downsample approx. 331,000 to 2,000
+
+
+
+Tool_makers_report
+------------------------
+
+Create a python code for extracting information from individual report files into a single consolidated csv file
+
+Instructions:
+Folder and files:
+- Two main folders: (1) 'Tool_makers_report' and (2) 'DAQ'
+- Each of these have subfolders with names of the form '1. Sxxx | 2. Sxxx | 6. Sxxx' etc.
+- Within each sub-folder, there are report files in either Word (docx extension) or Excel format (xlsx extension)
+- File names are in format 'a1 | a2 | a3' etc.
+You are to extract information from each of these report files a1, a2 and extract info into a single output .csv file
+Output format desired: | Folder name | File name | Tool-wear micrometer |
+Process files in folders within the main 'Tool_makers_report' folder:
+- Take the first folder - name is of form '1. Sxxx' the 'xxx' part changes
+- Copy this folder name into the 'Folder name' column of ouput
+- Within each folder, there are report files in either Word (docx extension) or Excel format (xlsx extension)
+- File names are in format 'a1 | a2 | a3' etc.
+- Copy the report file being processed in 'File name' column of ouput
+- Read each file and locate a table
+- Locate a column called 'Length'
+- This may contain a single or 2-3 rows.
+- Take the maximum value of Length and copy into 'Tool-wear micrometer' column of output
+
+
+DAQ - Sensor readings
+------------------------
+
+Create a python code for extracting information from individual report files into a single consolidated csv file
+
+Instructions:
+Folder and files:
+- Two main folders: (1) 'Tool_makers_report' and (2) 'DAQ'
+- Each of these have subfolders with names of the form '1. Sxxx | 2. Sxxx | 6. Sxxx' etc.
+- Within each sub-folder, there are report files in either Word (docx extension) or Excel format (xlsx extension)
+- File names are in format 'a1 | a2 | a3' etc.
+You are to extract information from each of these report files a1, a2 and extract info into a single output .csv file
+Output format desired: | Folder name | File name | Tool-wear micrometer |
+
+
+
+DAQ
+6. S1200_F35_D0.20
+7. S1200_F20_D0.30
+8. S1200_F40_D0.25
+
+
+Recording 1.csv
+- Sample into ['Vib_Spindle | Vib_Table | Sound_Spindle,Sound_table,X_Load_Cell | Y_Load_Cell | Z_Load_Cell | Current'] 
+- Delete all columns named 'Channel name'
+- Remove top 2 rows
+- Row 3 is column headers
+- Downsample approx. 331,000 to 2,000
+
+
+| Time | Vib_Spindle | Vib_Table | Sound_Spindle,Sound_table,X_Load_Cell | Y_Load_Cell | Z_Load_Cell | Current |
+

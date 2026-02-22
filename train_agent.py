@@ -2,8 +2,7 @@
 # AutoRL: CLI Version - Train and Evaluate Agents
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
-# V.5.0: 17-Feb-2026: Checkpoint mechanism for crash recovery
-# V.4.2: 17-Feb-2026: Grid search enabled for LR and Gamma hyperparameters
+# V.5.0: 22-Feb-2026 Re-baselined version
 # Usage: 
 # Training: train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 300 -AM 0
 # Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99
@@ -24,7 +23,9 @@ print('-------------------------------------------------------------------------
 print('Usage:')
 print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
 print('Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99')
+print('AM options: 0, 1, NW, TP, MH, SA')
 print('Evaluation: train_agent.py -V -S IEEE')
+print('Discover models: -D -S SIT to list all SIT models')
 print('--------------------------------------------------------------------------\n\n')
 
 print(' - Loading libraries ...')
@@ -1368,6 +1369,7 @@ def main():
 Examples:
   python train_agent.py -S SIT -A PPO,A2C -E 200 -AM 0
   python train_agent.py -S IEEE -A PPO -E 300 -AM 1
+  python train_agent.py -S IEEE -A PPO -E 300 -AM 'NW', 'TP', 'MH', 'SA'
   python train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99  # Grid search
   python train_agent.py -V -S IEEE  # Evaluate IEEE models
   python train_agent.py -D -S SIT   # Just list SIT models
