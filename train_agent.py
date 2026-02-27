@@ -25,6 +25,7 @@ print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
 print('Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99')
 print('AM options: 0, 1, NW, TP, MH, SA')
 print('Evaluation: train_agent.py -V -S IEEE')
+print('Evaluation: train_agent.py -V 1 -S SIT > to eval and publish only main analysis')
 print('Discover models: -D -S SIT to list all SIT models')
 print('--------------------------------------------------------------------------\n\n')
 
