@@ -20,3 +20,4 @@ test*
 Evaluation_Results*
 *.ipynb
 checkpoint*
+.DS_*

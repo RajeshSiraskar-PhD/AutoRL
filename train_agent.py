@@ -17,7 +17,7 @@ print('\n\n---------------------------------------------------------------------
 print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.5.0 | 17-Feb-2026 -- Checkpoint mechanism for crash recovery\n\n')
+print('Version: V.1.0 | 26-Feb-2026 -- Mac Version\n\n')
 print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
 print('--------------------------------------------------------------------------')
 print('Usage:')
