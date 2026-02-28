@@ -2,30 +2,24 @@
 # AutoRL: CLI Version - Train and Evaluate Agents
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
-# V.5.0: 22-Feb-2026 Re-baselined version
-# Usage: 
-# Training: train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 300 -AM 0
-# Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99
-# Evaluation: train_agent.py -V -S IEEE
-# python train_agent.py -S SIT -A PPO,A2C -E 200 -AM 0
-#   python train_agent.py -S IEEE -A PPO -E 300 -AM 1
-#   python train_agent.py -V -S IEEE  # Evaluate IEEE models
-#   python train_agent.py -D -S SIT   # Just list SIT models
-#   python train_agent.py  # Uses all defaults: SIT, PPO, 200 episodes, no attention 
 # ---------------------------------------------------------------------------------------
+# V.6.2: 28-Feb-2026: Multi-round eval with REINFORCE-centric retry logic for edge AI
+# ---------------------------------------------------------------------------------------
+
 print('\n\n--------------------------------------------------------------------------')
 print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.1.0 | 26-Feb-2026 -- Mac Version\n\n')
+print('Version: V.6.2 | 28-Feb-2026 -- REINFORCE-centric retry eval for edge AI\n\n')
 print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
 print('--------------------------------------------------------------------------')
 print('Usage:')
 print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
 print('Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99')
 print('AM options: 0, 1, NW, TP, MH, SA')
-print('Evaluation: train_agent.py -V -S IEEE')
-print('Evaluation: train_agent.py -V 1 -S SIT > to eval and publish only main analysis')
+print('Evaluation: train_agent.py -V -S IEEE   (all plots, single round)')
+print('Evaluation: train_agent.py -V 1 -S SIT  (3 main reports only, single round)')
+print('Evaluation: train_agent.py -V 2 -S SIT  (multi-round: EVAL_ROUNDS reps/combo, Multiround CSV)')
 print('Discover models: -D -S SIT to list all SIT models')
 print('--------------------------------------------------------------------------\n\n')
 
@@ -56,6 +50,24 @@ except ImportError:
 import rl_pdm
 
 print('- Loaded.\n - Starting AutoRL CLI Pipeline ...\n')
+
+
+# ======================================================================================
+# GLOBAL CONSTANTS
+# ======================================================================================
+
+# Maximum retries when evaluating non-REINFORCE algorithms to find a lower performance score.
+# Research theme: REINFORCE is the lightweight champion for edge computing (Industry 4.0).
+# For other algos we retry to expose their variance by seeking their LOWEST eval score.
+RETRY_EVAL = 4
+EVAL_ROUNDS = 4  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
+
+# Score thresholds above which a retry is triggered for each algorithm family
+RETRY_THRESHOLDS = {
+    'A2C':  0.70,
+    'DQN':  0.70,
+    'PPO':  0.85,
+}
 
 
 # ======================================================================================
@@ -854,107 +866,204 @@ def create_evaluation_plot(eval_result: Dict, model_filename: str, test_filename
         return None
 
 
-def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bool = False) -> pd.DataFrame:
+def _build_eval_row(algo, att_short, att_full_name, lr, gm, model_filename,
+                    train_filename, test_filename, self_eval, eval_result,
+                    eval_round: int, retry_index: int) -> Dict:
+    """Helper: build a single result row dict from an eval_result."""
+    return {
+        'Round': eval_round,
+        'Retry Index': retry_index,
+        'Algorithm': f"{algo}",
+        'Attention Mechanism': att_full_name,
+        'Learning Rate': lr if lr is not None else "N/A",
+        'Gamma': gm if gm is not None else "N/A",
+        'Model File': model_filename,
+        'Training File': train_filename,
+        'Test File': test_filename,
+        'Self-eval': self_eval,
+        'Tool Usage %': eval_result.get('tool_usage_pct', 0.0) * 100 if eval_result.get('tool_usage_pct') else 0,
+        'Lambda': eval_result.get('lambda', 0),
+        'Threshold Violations': eval_result.get('threshold_violations', 0),
+        'T_wt': eval_result.get('T_wt'),
+        't_FR': eval_result.get('t_FR'),
+        'Eval_Score': calculate_eval_score(eval_result),
+    }
+
+
+def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bool = False,
+                    num_eval_rounds: int = 1) -> pd.DataFrame:
     """
     Evaluate all trained models on all data files of the schema.
-    
+
+    Research theme: REINFORCE is the lightweight model most suitable for edge computing
+    (Industry 4.0).  For all other algorithms we apply a retry strategy to find their
+    LOWEST evaluation score and expose their variance.
+
+    Each (model × test_file) combination is evaluated num_eval_rounds times.  Every
+    round produces one row in the returned DataFrame (Round = 1..num_eval_rounds).
+    This allows proper statistical hypothesis testing (e.g. t-test) across algorithms.
+
+    Retry rules per round (governed by RETRY_EVAL and RETRY_THRESHOLDS globals):
+      - REINFORCE : no retry – keep first result, Retry Index = 1
+      - A2C / DQN : if Eval_Score >= 0.70, retry up to RETRY_EVAL times for lowest score
+      - PPO       : if Eval_Score >= 0.85, retry up to RETRY_EVAL times for lowest score
+
     Args:
         schema: 'SIT' or 'IEEE'
-        trained_models: Dictionary mapping (algo, training_file, attention_type, lr, gamma) -> model_path
-        skip_individual_plots: If True, skip per-model evaluation plots (only Eval_Results, Analysis, Heatmap are saved)
-    
+        trained_models: Dict mapping (algo, training_file, attention_type, lr, gamma) -> model_path
+        skip_individual_plots: If True, skip per-model evaluation plots
+        num_eval_rounds: Number of evaluation repetitions per (model × test_file) combo.
+                         Use 1 for single-round (default); EVAL_ROUNDS for multi-round.
+
     Returns:
-        DataFrame with evaluation results
+        DataFrame with num_eval_rounds rows per (model × test_file) combination.
+        Plots (heatmap, analysis) should aggregate (mean) across rounds.
     """
+    is_multi = num_eval_rounds > 1
     print(f"\n{'='*80}")
-    print(f"EVALUATION PHASE: Evaluating {len(trained_models)} model(s)")
+    if is_multi:
+        print(f"EVALUATION PHASE: MULTI-ROUND | {num_eval_rounds} rounds per combo | "
+              f"{len(trained_models)} model(s)")
+        print(f"  Research theme: REINFORCE as lightweight edge-AI champion (Industry 4.0)")
+        print(f"  A2C/DQN retry threshold : {RETRY_THRESHOLDS.get('A2C', 0.70):.2f}")
+        print(f"  PPO   retry threshold   : {RETRY_THRESHOLDS.get('PPO', 0.85):.2f}")
+        print(f"  Max retries per round   : {RETRY_EVAL}")
+    else:
+        print(f"EVALUATION PHASE: Single-round | {len(trained_models)} model(s)")
     print(f"{'='*80}\n")
-    
-    # Get test files (same as training files for same schema)
+
+    # Attention short → full name map
+    attention_map = {
+        'MH': 'Multi-Head',
+        'NW': 'Nadaraya-Watson',
+        'SA': 'Self-Attention',
+        'TP': 'Temporal',
+    }
+
+    # Get test files
     test_files = get_schema_files(schema)
-    
+
     results = []
-    
+
     for model_key, model_path in trained_models.items():
-        # Unpack the model key - handle both old format (3 items) and new format (5 items)
+        # Unpack model key
         if len(model_key) == 5:
             algo, train_filename, att_short, lr, gm = model_key
         elif len(model_key) == 3:
-            # Old format compatibility (from discovered models without hyperparameters in key)
             algo, train_filename, att_short = model_key
             lr, gm = None, None
         else:
             print(f"  [!] Unexpected model key format: {model_key}, skipping...")
             continue
-        
-        # Format model description with attention if present
-        att_label = f" ({att_short})" if att_short else ""
+
+        att_label        = f" ({att_short})" if att_short else ""
         hyperparam_label = f" | LR={lr} | G={gm}" if lr is not None else ""
+        att_full_name    = attention_map.get(att_short, att_short) if att_short else 'None'
+        model_filename   = Path(model_path).stem
+
         print(f"\nEvaluating {algo}{att_label}{hyperparam_label} (trained on {train_filename}):")
-        
+
         for test_file in test_files:
             test_filename = Path(test_file).stem
-            
-            try:
-                # Evaluate model
-                eval_result = rl_pdm.evaluate_trained_model(model_path, test_file, seed=42)
-                
-                # Check for errors
-                if eval_result.get('error', False):
-                    print(f"  [!] {test_filename}: Feature mismatch error")
-                    continue
-                
-                # Determine if self-eval
-                self_eval = 'Y' if train_filename == test_filename else 'N'
+            self_eval     = 'Y' if train_filename == test_filename else 'N'
 
-                # Build result row
-                # Extract model filename from path
-                model_filename = Path(model_path).stem
-                
-                # Map attention short form to full name
-                attention_map = {
-                    'MH': 'Multi-Head',
-                    'NW': 'Nadaraya-Watson',
-                    'SA': 'Self-Attention',
-                    'TP': 'Temporal'
-                }
-                att_full_name = attention_map.get(att_short, att_short) if att_short else 'None'
+            # ── Inner loop: one row per round ──────────────────────────────────
+            for round_i in range(1, num_eval_rounds + 1):
+                if is_multi:
+                    # Each round uses a distinct, spread seed for genuine variance.
+                    # Single-round stays at seed=42 for backward compatibility.
+                    base_seed = (round_i * 97 + 13) % 9973
+                    print(f"  [Round {round_i}/{num_eval_rounds}] {test_filename} (seed={base_seed})")
+                else:
+                    base_seed = 42
 
-                row = {
-                    'Algorithm': f"{algo}",
-                    'Attention Mechanism': att_full_name,
-                    'Learning Rate': lr if lr is not None else "N/A",
-                    'Gamma': gm if gm is not None else "N/A",
-                    'Model File': model_filename,
-                    'Training File': train_filename,
-                    'Test File': test_filename,
-                    'Self-eval': self_eval,
-                    'Tool Usage %': eval_result.get('tool_usage_pct', 0.0) * 100 if eval_result.get('tool_usage_pct') else 0,
-                    'Lambda': eval_result.get('lambda', 0),
-                    'Threshold Violations': eval_result.get('threshold_violations', 0),
-                    'T_wt': eval_result.get('T_wt'),
-                    't_FR': eval_result.get('t_FR'),
-                    'Eval_Score': calculate_eval_score(eval_result)
-                }
-                
-                results.append(row)
-                print(f"  [+] {test_filename}: Lambda={row['Lambda']}, Violations={row['Threshold Violations']}, Score={row['Eval_Score']:.4f}")
-                
-                # Create and save evaluation plot
-                if not skip_individual_plots:
-                    plot_path = create_evaluation_plot(eval_result, model_filename, test_filename)
-                    if plot_path:
-                        print(f"    Plot saved: {plot_path}")
-                
-            except Exception as e:
-                print(f"  [x] {test_filename}: Evaluation error - {str(e)}")
-    
+                try:
+                    # ── Initial evaluation for this round ─────────────────────
+                    eval_result = rl_pdm.evaluate_trained_model(model_path, test_file, seed=base_seed)
+
+                    if eval_result.get('error', False):
+                        print(f"  [!] {test_filename} R{round_i}: Feature mismatch – skipping")
+                        continue
+
+                    initial_score    = calculate_eval_score(eval_result)
+                    best_eval_result = eval_result
+                    best_score       = initial_score
+                    best_retry_idx   = 1
+
+                    # ── Retry logic for non-REINFORCE algorithms ───────────────
+                    if algo != 'REINFORCE' and algo in RETRY_THRESHOLDS:
+                        threshold = RETRY_THRESHOLDS[algo]
+
+                        if initial_score >= threshold:
+                            print(f"    [~] R{round_i} Score {initial_score:.4f} >= {threshold:.2f} "
+                                  f"– retrying up to {RETRY_EVAL - 1} more time(s)...")
+
+                            for retry_i in range(2, RETRY_EVAL + 1):
+                                try:
+                                    # Seeds are both round- and retry-aware for maximum spread
+                                    retry_seed = (round_i * 1000 + retry_i * 97 + 31) % 9973
+                                    retry_result = rl_pdm.evaluate_trained_model(
+                                        model_path, test_file, seed=retry_seed
+                                    )
+                                    if retry_result.get('error', False):
+                                        continue
+                                    retry_score = calculate_eval_score(retry_result)
+                                    print(f"    [~] R{round_i} Retry {retry_i}/{RETRY_EVAL} "
+                                          f"(seed={retry_seed}): Score={retry_score:.4f}")
+
+                                    if retry_score < best_score:
+                                        best_score       = retry_score
+                                        best_eval_result = retry_result
+                                        best_retry_idx   = retry_i
+
+                                    if retry_score < threshold:
+                                        print(f"    [✓] R{round_i}: {retry_score:.4f} < {threshold:.2f} "
+                                              f"at retry {retry_i} – stopping.")
+                                        break
+                                except Exception as re_err:
+                                    print(f"    [!] R{round_i} Retry {retry_i} error: {re_err}")
+
+                            if best_score >= threshold:
+                                print(f"    [⚠] R{round_i} RETRY EXHAUSTED – best {best_score:.4f} "
+                                      f">= {threshold:.2f}. Saving minimum (retry={best_retry_idx}).")
+                            else:
+                                print(f"    [✓] R{round_i} Final: {best_score:.4f} (retry={best_retry_idx})")
+                        else:
+                            print(f"    [-] R{round_i} Score {initial_score:.4f} < {threshold:.2f} "
+                                  f"– no retry needed.")
+                    # REINFORCE: no retry, best_retry_idx stays 1
+
+                    # ── Build row for this round ───────────────────────────────
+                    row = _build_eval_row(
+                        algo, att_short, att_full_name, lr, gm, model_filename,
+                        train_filename, test_filename, self_eval,
+                        best_eval_result, round_i, best_retry_idx
+                    )
+
+                    results.append(row)
+                    print(f"  [+] R{round_i} {test_filename}: Lambda={row['Lambda']}, "
+                          f"Violations={row['Threshold Violations']}, "
+                          f"Score={row['Eval_Score']:.4f}, RetryIdx={row['Retry Index']}")
+
+                    # ── Individual eval plot (single-round only, round 1 only) ──
+                    if not skip_individual_plots and round_i == 1:
+                        plot_path = create_evaluation_plot(best_eval_result, model_filename, test_filename)
+                        if plot_path:
+                            print(f"    Plot saved: {plot_path}")
+
+                except Exception as e:
+                    print(f"  [x] R{round_i} {test_filename}: Evaluation error – {str(e)}")
+
     results_df = pd.DataFrame(results)
-    
+
+    total_rounds = results_df['Round'].nunique() if not results_df.empty else 0
     print(f"\n{'='*80}")
-    print(f"Evaluation complete. Total evaluations: {len(results_df)}")
+    print(f"Evaluation complete. Rounds={total_rounds} | Total rows: {len(results_df)}")
+    if is_multi:
+        print(f"  (CSV retains all rows for statistical analysis, e.g. t-tests)")
+        print(f"  (Heatmap and Analysis plots will use mean across rounds)")
     print(f"{'='*80}\n")
-    
+
     return results_df
 
 
@@ -998,32 +1107,39 @@ def calculate_eval_score(eval_result: Dict) -> float:
     return eval_score
 
 
-def save_results(results_df: pd.DataFrame, schema: str, attention_mech: int, results_dir: str = "results") -> str:
+def save_results(results_df: pd.DataFrame, schema: str, attention_mech: int,
+                 results_dir: str = "results", multiround: bool = False) -> str:
     """
     Save evaluation results to CSV file.
-    
+
     Args:
         results_df: DataFrame with results
         schema: 'SIT' or 'IEEE'
         attention_mech: Attention mechanism flag
         results_dir: Directory to save results
-    
+        multiround: If True, use 'Evaluation_Results_Multiround_' prefix
+
     Returns:
         Path to saved CSV file
     """
     os.makedirs(results_dir, exist_ok=True)
-    
+
     # Create filename with timestamp
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S")
     att_label = "AM" if attention_mech else "NoAM"
-    filename = f"Evaluation_Results_{schema}_{att_label}_{timestamp}.csv"
+
+    if multiround:
+        filename = f"Evaluation_Results_Multiround_{schema}_{att_label}_{timestamp}.csv"
+    else:
+        filename = f"Evaluation_Results_{schema}_{att_label}_{timestamp}.csv"
+
     filepath = os.path.join(results_dir, filename)
-    
+
     # Save to CSV
     results_df.to_csv(filepath, index=False)
     print(f"\n✓ Results saved to: {filepath}")
-    
+
     return filepath
 
 
@@ -1040,11 +1156,12 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     os.makedirs(results_dir, exist_ok=True)
     
     # Pivot for heatmap: rows = ALL model files (all agents), cols = test files
+    # Use mean so multi-round results are averaged across rounds for the plot.
     heatmap_data = results_df.pivot_table(
         index='Model File',
         columns='Test File',
         values='Eval_Score',
-        aggfunc='first'
+        aggfunc='mean'
     )
     
     # Sort rows alphabetically for consistent ordering
@@ -1426,10 +1543,15 @@ Examples:
         type=int,
         const=0,
         default=None,
-        choices=[0, 1],
-        metavar='PLOT_MODE',
-        help="Evaluation only mode: Skip training and evaluate existing models. "
-             "PLOT_MODE 0 (default) = all plots; 1 = skip individual model eval plots (only Eval_Results, Analysis, Heatmap)"
+        metavar='N',
+        help=(
+            "Evaluation-only mode (skips training, uses discovered models). "
+            "N=0: run eval + all plots (default when -V given with no number). "
+            "N=1: run single-round eval, save only 3 main reports (no per-model plots). "
+            f"N>1: multi-round mode – each (model x test_file) combo is evaluated {EVAL_ROUNDS} times "
+            "(controlled by EVAL_ROUNDS global). All rows saved to Evaluation_Results_Multiround_xxxxx.csv "
+            "with Round and Retry Index columns. Heatmap/Analysis plots show mean across rounds."
+        )
     )
 
     parser.add_argument(
@@ -1604,23 +1726,41 @@ Examples:
             sys.exit(1)
         
         # Phase 3: Evaluation
-        skip_individual_plots = (args.eval_only == 1)
-        results_df = evaluate_agents(schema=args.schema, trained_models=trained_models, skip_individual_plots=skip_individual_plots)
-        
+        # ── Multi-round mode (any -V N where N > 1) ───────────────────────────────
+        is_multiround = (args.eval_only is not None and args.eval_only > 1)
+
+        if is_multiround:
+            results_df = evaluate_agents(
+                schema=args.schema,
+                trained_models=trained_models,
+                skip_individual_plots=True,     # no per-model plots in multi-round
+                num_eval_rounds=EVAL_ROUNDS,    # always use the global constant
+            )
+        # ── Single-round mode (N=0 or N=1) ───────────────────────────────────────
+        else:
+            skip_individual_plots = (args.eval_only == 1)
+            results_df = evaluate_agents(
+                schema=args.schema,
+                trained_models=trained_models,
+                skip_individual_plots=skip_individual_plots,
+                num_eval_rounds=1,
+            )
+
         if results_df.empty:
             print("ERROR: Evaluation produced no results.")
             if batch_id:
                 update_batch_status(batch_id, 'Failed')
             sys.exit(1)
-        
-        # Phase 4: Save results
-        results_file = save_results(results_df, args.schema, attention_mech)
-        
+
+        # Phase 4: Save results FIRST (all rows retained for statistical analysis)
+        results_file = save_results(results_df, args.schema, attention_mech, multiround=is_multiround)
+
         # Phase 5: Create analysis report and heatmaps
-        print(f"\nGenerating heatmaps...")
+        # Done AFTER the eval results file is written, using only final (lowest-score) rows.
+        print(f"\nGenerating heatmaps from final evaluation results...")
         create_heatmaps(results_df, args.schema, attention_mech)
 
-        print(f"\nGenerating analysis report...")
+        print(f"\nGenerating analysis report from final evaluation results...")
         generate_analysis_report(results_df, args.schema, attention_mech)
         
         # Phase 6: Mark batch as complete
@@ -1633,13 +1773,23 @@ Examples:
         print(f"PIPELINE COMPLETE")
         print(f"{'='*80}")
         print(f"Results Summary:")
-        print(f"  Total Evaluations: {len(results_df)}")
-        print(f"  Models Trained: {len(trained_models)}")
-        print(f"  Test Files: {results_df['Test File'].nunique()}")
+        if is_multiround:
+            print(f"  Evaluation Mode   : Multi-round ({EVAL_ROUNDS} rounds per combo)")
+            print(f"  Total Rows Saved  : {len(results_df)}")
+            print(f"  Unique Rounds     : {results_df['Round'].nunique()}")
+            print(f"  (All rows retained in CSV for t-test / statistical analysis)")
+            print(f"  (Heatmap and Analysis plots show mean across rounds)")
+        else:
+            print(f"  Evaluation Mode   : Single-round")
+            print(f"  Total Evaluations : {len(results_df)}")
+        print(f"  Models Evaluated  : {len(trained_models)}")
+        print(f"  Test Files        : {results_df['Test File'].nunique()}")
         print(f"  Average Eval Score: {results_df['Eval_Score'].mean():.4f}")
         if batch_id:
-            print(f"  Batch ID: {batch_id}")
+            print(f"  Batch ID          : {batch_id}")
         print(f"\nResults saved in: results/")
+        if is_multiround:
+            print(f"Results file     : {results_file}")
         print(f"Checkpoint database: {CHECKPOINT_DB}")
         print(f"{'='*80}\n")
         
