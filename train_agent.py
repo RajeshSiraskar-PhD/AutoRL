@@ -3,14 +3,14 @@
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
 # ---------------------------------------------------------------------------------------
-# V.6.2: 28-Feb-2026: Multi-round eval with REINFORCE-centric retry logic for edge AI
+# V.2.2: 01-Mar-2026: Heat-map label correction
 # ---------------------------------------------------------------------------------------
 
 print('\n\n--------------------------------------------------------------------------')
 print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.6.2 | 28-Feb-2026 -- REINFORCE-centric retry eval for edge AI\n\n')
+print('Version: V.2.2 | 01-Mar-2026 -- Heat-map label correction\n\n')
 print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
 print('--------------------------------------------------------------------------')
 print('Usage:')
@@ -52,28 +52,13 @@ import rl_pdm
 print('- Loaded.\n - Starting AutoRL CLI Pipeline ...\n')
 
 
-# ======================================================================================
-# GLOBAL CONSTANTS
-# ======================================================================================
-
-# Maximum retries when evaluating non-REINFORCE algorithms to find a lower performance score.
-# Research theme: REINFORCE is the lightweight champion for edge computing (Industry 4.0).
-# For other algos we retry to expose their variance by seeking their LOWEST eval score.
-RETRY_EVAL = 4
-EVAL_ROUNDS = 4  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
-
-# Score thresholds above which a retry is triggered for each algorithm family
-RETRY_THRESHOLDS = {
-    'A2C':  0.70,
-    'DQN':  0.70,
-    'PPO':  0.85,
-}
-
+EVAL_ROUNDS = 20  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
 
 # ======================================================================================
 # CHECKPOINT DATABASE FUNCTIONS
 # ======================================================================================
-
+# Checkpoint Model Evaluation - recovery from failuer - Maximum retries
+RETRY_EVAL = 10
 CHECKPOINT_DB = "checkpoint.db"
 
 def init_checkpoint_db():
@@ -895,18 +880,9 @@ def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bo
     """
     Evaluate all trained models on all data files of the schema.
 
-    Research theme: REINFORCE is the lightweight model most suitable for edge computing
-    (Industry 4.0).  For all other algorithms we apply a retry strategy to find their
-    LOWEST evaluation score and expose their variance.
-
     Each (model × test_file) combination is evaluated num_eval_rounds times.  Every
     round produces one row in the returned DataFrame (Round = 1..num_eval_rounds).
     This allows proper statistical hypothesis testing (e.g. t-test) across algorithms.
-
-    Retry rules per round (governed by RETRY_EVAL and RETRY_THRESHOLDS globals):
-      - REINFORCE : no retry – keep first result, Retry Index = 1
-      - A2C / DQN : if Eval_Score >= 0.70, retry up to RETRY_EVAL times for lowest score
-      - PPO       : if Eval_Score >= 0.85, retry up to RETRY_EVAL times for lowest score
 
     Args:
         schema: 'SIT' or 'IEEE'
@@ -919,15 +895,17 @@ def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bo
         DataFrame with num_eval_rounds rows per (model × test_file) combination.
         Plots (heatmap, analysis) should aggregate (mean) across rounds.
     """
+
+    # Checkpoint Model Evaluation - recovery from failuer - Maximum retries
+    # RETRY_EVAL = 10
+    # EVAL_ROUNDS = 20  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
+    RETRY_THRESHOLDS = {'A2C':  0.70, 'DQN':  0.70, 'PPO':  0.85}
+    
     is_multi = num_eval_rounds > 1
     print(f"\n{'='*80}")
     if is_multi:
         print(f"EVALUATION PHASE: MULTI-ROUND | {num_eval_rounds} rounds per combo | "
               f"{len(trained_models)} model(s)")
-        print(f"  Research theme: REINFORCE as lightweight edge-AI champion (Industry 4.0)")
-        print(f"  A2C/DQN retry threshold : {RETRY_THRESHOLDS.get('A2C', 0.70):.2f}")
-        print(f"  PPO   retry threshold   : {RETRY_THRESHOLDS.get('PPO', 0.85):.2f}")
-        print(f"  Max retries per round   : {RETRY_EVAL}")
     else:
         print(f"EVALUATION PHASE: Single-round | {len(trained_models)} model(s)")
     print(f"{'='*80}\n")
@@ -990,7 +968,7 @@ def evaluate_agents(schema: str, trained_models: Dict, skip_individual_plots: bo
                     best_score       = initial_score
                     best_retry_idx   = 1
 
-                    # ── Retry logic for non-REINFORCE algorithms ───────────────
+                    # ── Retry logic
                     if algo != 'REINFORCE' and algo in RETRY_THRESHOLDS:
                         threshold = RETRY_THRESHOLDS[algo]
 
@@ -1185,9 +1163,6 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             'temporal':            'TP',
         }
 
-        # Best-performing test column per model row
-        best_tests = heatmap_data.idxmax(axis=1).fillna('N/A')
-
         # Helper: format LR as e-notation without leading zeros (0.0005 -> 5e-4)
         def fmt_lr(x):
             if x is None:
@@ -1222,9 +1197,7 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             lr_str = fmt_lr(lr_raw) if lr_raw is not None else None
             gm_str = str(gm_raw) if gm_raw is not None else None
 
-            best = str(best_tests.loc[model_file]).replace('_', '-')
-
-            # Format: Algo [AM] LR Gamma Training / BestTest
+            # Format: Algo [AM] LR Gamma Training
             parts = [str(algo)]
             if att_code:
                 parts.append(att_code)
@@ -1235,7 +1208,7 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             if training:
                 parts.append(training)
 
-            label = ' '.join(parts) + ' / ' + best
+            label = ' '.join(parts)
             friendly_labels.append(label)
 
         # Replace heatmap row index with friendly labels for display

@@ -1353,7 +1353,8 @@ def evaluate_trained_model(model_path, data_file, wear_threshold=None, seed=42):
     
     # Lambda: t_lambda - t_FR
     if t_FR is not None:
-        lambda_metric = abs(t_lambda - t_FR)
+        # lambda_metric = abs(t_lambda - t_FR)
+        lambda_metric = (t_lambda - t_FR)
         t_lambda_metric = t_FR + LAMBDA * (t_EOL - t_FR) # Saxena's Lambda point based on t_FR
         tool_usage_pct = all_wear[t_FR] / eval_wear_threshold
         # Check violations
