@@ -1,5 +1,6 @@
 # 06-Feb-2026: First commit
 
+/paper*
 /__pycache__
 /lab
 /storage
@@ -21,3 +22,10 @@ Evaluation_Results*
 *.ipynb
 checkpoint*
 .DS_*
+Thesis_Work*
+*.aux
+*.log
+*.out
+*.fdb_latexmk
+*.fls
+

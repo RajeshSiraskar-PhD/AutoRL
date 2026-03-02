@@ -1,8 +1,142 @@
-I want to create presentation slides on the following: What I want you to do is create a bulleted list of the important technical details - theory and how it was implemented. Do you best to keep the points less than 12-15 as these are slides. If it is complex subject and we need two slides to explain so be it. Create latex version of formulas where you have to
-- PPO basic (no-attention) version
-- REINFORCE basic (no-attention) version
-- Attention mechanism in general - 1 slide
-- Attention mechanisms  - one slide per AM technique used. How it adds to the plain vanila base version of PPO and REINFORCE
+========================================
+RESEARCH ARTICLE 02-Mar-2026
+========================================
+Write an article Article.tex, suitable for publication in a high level scientific journal.
+
+Research Theme: Reinforcement Learning using REINFORCE algorithm for predictive maintenance
+Research Topic: Study and implementation of AutoRL for creating Reinforcement Learning agents for predictive maintenance of a milling machine.
+
+Research Objective: Industry 4.0, Edge computing requires computationally light weight models. Determine if REINFORCE models are as good as more advanced models such as PPO for this task
+
+You are provided the following:
+1. Code base - two files. train_agent.py - that runs the autoRL and evaluation pipelines. rl_pdm.py that contains the milling machine Gymnasium compatible environment, StableBaselines-3 functions for standard algos  (PPO, A2C and DQN), custom implementation of REINFORCE on the lines of StableBaselines-3, implementation of 4 attention mechanisms implementations
+2. Results of the trained models - evaluated on unseen data - see Analysis_Report_SIT....png, HeatMap_allagents....png and Evaluation_Results.csv
+
+Instructions:
+
+1. Overall length of paper - less than 20 pages
+2. Ensure paper content speaks to a scientific PhD audience
+3. Formulas in LateX formats
+4. Cite relevant and as far as possible **recent** or **seminal** research
+
+5. Create sections and write about the following:
+ - Setting the context: Industry 4.0 + predictive maintenance + edge computing + computationally light and light weight AI-ML models
+ - Using computationally light models means lesser carbon footprint - link to Industry 4.0/5.0 and carbon credits awareness
+ - AutoRL
+ - Attention mechanism in general
+ The next few points are core contributions of my research - so detail these out well and review them properly with  scientific concepts, notations and formulae. 
+ (1) Attention mechanism for predictive maintenance
+ (2) All basic RL algorithms - A2C, DQN, PPO and REINFORCE
+ (3) Detailed note on how the MT_Env environment was implemented - OpenAI Gymnassium compatible 
+ (4) Why REINFORCE could be best suited 
+ 
+Note on sub-sections for Attention mechanisms used:
+ - Study the rl_pdm.py, look at how each attention mechanism is implemented - write about that
+   - NW - NadarayaWatson
+   - TP - Temporal attention
+   - MH - MultiHead
+   - SA - Self Attention
+ - Write in detail about each attention mechanism, how it is implemented in theory - how it was implemented in practice in the code
+ - What is special about - pros/cons
+ - In the experiment results - the best combination was REINFORCE + MultiHead and REINFORCE + temporal - Write the reasons why this could happen
+ - Is it this that makes REINFORCE comparable to PPO?
+ 
+6. Use and cite, my own previous research. Create a sound segway for this research. Use content from this and cite these without fail.
+
+Ref. 1. An empirical study of the naïve REINFORCE algorithm for predictive maintenance - https://link.springer.com/article/10.1007/s42452-025-06613-1
+For: Study of automated RL frameworks (AutoRL) as platforms to encourage industrial practitioners to apply RL to their problems. The empirical study demonstrated that, in the untuned state, simpler algorithms like the REINFORCE perform reasonably well. For AutoRL frameworks, this research encourages seeking new design approaches to automatically identify optimum algorithm-hyperparameter combinations.
+
+Ref. 2. Application of the Nadaraya-Watson estimator based attention mechanism to the field of predictive maintenance -  https://www.sciencedirect.com/science/article/pii/S2215016124002073
+For: I applied attention mechanism to predictive maintenance.
+
+Ref. 3. Reinforcement learning for predictive maintenance: a systematic technical review -
+https://link.springer.com/article/10.1007/s10462-023-10468-6
+For: The section on prognostic specific evaluation metrics. Lambda is what I used. Lambda = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal.
+
+
+8. RESULTS:
+ - Models were trained using 3 data files
+ - 4 algorithms and 4 attention mechanisms were used
+ - 3 x 4 x 4 i.e.. 48 models trained
+ - Tested on 6 other **unseen** data files
+
+Metrics for evaluation for reading the Analysis_Report.png:
+- A model weighted score "Evaluation Score"
+- Tool use % (higher the better)
+- Lambda metric is a prognostic specific metric from = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal.
+- Evaluation was based on running 20 rounds of testing on UNSEEN data
+- Mention hypothesis testing showed REINFORCE was better than all other algos. using alpha = 0.05
+- Then show REINFORCE with multi-head and temporal is the overall best suggestion.
+
+========================
+PREVIOUS Version
+========================
+Write an article suitable for publication in a high level scientific journal.
+
+Research Theme: Reinforcement Learning using REINFORCE algorithm for predictive maintenance
+Research Topic: Study and implementation of AutoRL for creating Reinforcement Learning agents for predictive maintenance of a milling machine.
+
+Research Objective: Industry 4.0, Edge computing requires computationally light weight models. Determine if REINFORCE models are as good as more advanced models such as PPO for this task
+
+You are provided the following:
+1. Code base - two files. train_agent.py - that runs the autoRL and evaluation pipelines. rl_pdm.py that contains the milling machine Gymnasium compatible environment, StableBaselines-3 functions for standard algos  (PPO, A2C and DQN), custom implementation of REINFORCE on the lines of StableBaselines-3, implementation of 4 attention mechanisms implementations2. Results of the trained models - evaluated on unseen data
+3. Two images about on evaluation metrics
+
+Instructions:
+
+1. Overall length of paper - less than 20 pages
+2. Ensure paper content speaks to a scientific PhD audience
+3. Formulas in LateX formats
+4. Cite relevant and as far as possible **recent** or **seminal** research
+
+5. Create sections and write about the following:
+ - Setting the context: Industry 4.0 + predictive maintenance + edge computing + computationally light and light weight AI-ML models
+ - Using computationally light models means lesser carbon footprint - link to Industry 4.0/5.0 and carbon credits awareness
+ - AutoRL
+ - Attention mechanism in general
+ The next few points are core contributions of my research - so detail these out well and review them properly with  scientific concepts, notations and formulae. 
+ (1) Attention mechanism for predictive maintenance
+ (2) All basic RL algorithms - A2C, DQN, PPO and REINFORCE
+ (3) Detailed note on how the MT_Env environment was implemented - OpenAI Gymnassium compatible 
+ (4) Why REINFORCE could be best suited 
+ 
+Note on sub-sections for Attention mechanisms used:
+ - Study the rl_pdm.py, look at how each attention mechanism is implemented - write about that
+   - NW - NadarayaWatson
+   - TP - Temporal attention
+   - MH - MultiHead
+   - SA - Self Attention
+ - Write in detail about each attention mechanism, how it is implemented in theory - how it was implemented in practice in the code
+ - What is special about - pros/cons
+ - In the experiment results - the best combination was REINFORCE + MultiHead and REINFORCE + temporal - Write the reasons why this could happen
+ - Is it this that makes REINFORCE comparable to PPO?
+ 
+6. Use and cite, my own previous research. Create a sound segway for this research. Use content from this and cite these without fail.
+
+Ref. 1. An empirical study of the naïve REINFORCE algorithm for predictive maintenance - https://link.springer.com/article/10.1007/s42452-025-06613-1
+For: Study of automated RL frameworks (AutoRL) as platforms to encourage industrial practitioners to apply RL to their problems. The empirical study demonstrated that, in the untuned state, simpler algorithms like the REINFORCE perform reasonably well. For AutoRL frameworks, this research encourages seeking new design approaches to automatically identify optimum algorithm-hyperparameter combinations.
+
+Ref. 2. Application of the Nadaraya-Watson estimator based attention mechanism to the field of predictive maintenance -  https://www.sciencedirect.com/science/article/pii/S2215016124002073
+For: I applied attention mechanism to predictive maintenance.
+
+Ref. 3. Reinforcement learning for predictive maintenance: a systematic technical review -
+https://link.springer.com/article/10.1007/s10462-023-10468-6
+For: The section on prognostic specific evaluation metrics. Lambda is what I used. Lambda = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal.
+
+
+8. RESULTS:
+ - Models were trained using 3 data files
+ - 4 algorithms and 4 attention mechanisms were used
+ - 3 x 4 x 4 i.e.. 48 models trained
+ - Tested on 6 other **unseen** data files
+
+Metrics for evaluation:
+- A model weighted score "Evaluation Score"
+- Tool use % (higher the better)
+- Lambda metric is a prognostic specific metric from = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal.
+- Evaluation was based on running 20 rounds of testing on UNSEEN data
+- Mention hypothesis testing showed REINFORCE was better than all other algos. using alpha = 0.05
+- Then show REINFORCE with multi-head and temporal is the overall best suggestion.
 
 ========================================
 # AutoRL for Predictive Maintenance Agents
