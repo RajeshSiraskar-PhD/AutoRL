@@ -3,14 +3,14 @@
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
 # ---------------------------------------------------------------------------------------
-# V.2.2: 01-Mar-2026: Heat-map label correction
+# V.2.3: 03-Mar-2026: Heat-map - arrange: NW, TP, SA, MH
 # ---------------------------------------------------------------------------------------
 
 print('\n\n--------------------------------------------------------------------------')
 print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.2.2 | 01-Mar-2026 -- Heat-map label correction\n\n')
+print('Version: V.2.3 | 03-Mar-2026 -- Heat-map arrangement: NW, TP, SA, MH\n\n')
 print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
 print('--------------------------------------------------------------------------')
 print('Usage:')
@@ -1151,7 +1151,6 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             'multi_head':          'MH',
             'multi-head':          'MH',
             'multihead':           'MH',
-            'multiHead':           'MH',
             'nadaraya_watson':     'NW',
             'nadaraya-watson':     'NW',
             'nadaraya':            'NW',
@@ -1161,7 +1160,33 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             'selfattention':       'SA',
             'selfattn':            'SA',
             'temporal':            'TP',
+            'tp':                  'TP',
+            'sa':                  'SA',
+            'mh':                  'MH',
         }
+
+        att_display_name_map = {
+            'MH': 'Multi-Head',
+            'NW': 'Nadaraya-Watson',
+            'SA': 'Self-Attention',
+            'TP': 'Temporal',
+        }
+
+        def normalize_att_code(att_value) -> str:
+            """Return a 2-letter attention code (e.g. 'MH') from metadata values."""
+            if not att_value:
+                return ''
+            raw = str(att_value).strip()
+
+            # If metadata already contains a short code (MH/NW/SA/TP), accept it.
+            upper = raw.upper()
+            if upper in att_display_name_map:
+                return upper
+
+            # Normalize common string variants.
+            key = raw.lower().strip()
+            key = re.sub(r"[\s\-]+", "_", key)
+            return att_code_map.get(key, '')
 
         # Helper: format LR as e-notation without leading zeros (0.0005 -> 5e-4)
         def fmt_lr(x):
@@ -1192,15 +1217,18 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
             training    = str(meta.get('training_data', '')).replace('_', '-')
 
             # Resolve attention short code
-            att_code = att_code_map.get(str(att_raw).lower().strip(), '') if att_raw else ''
+            att_code = normalize_att_code(att_raw)
+
+            # Resolve attention display name for label
+            att_display = att_display_name_map.get(att_code, att_code) if att_code else ''
 
             lr_str = fmt_lr(lr_raw) if lr_raw is not None else None
             gm_str = str(gm_raw) if gm_raw is not None else None
 
             # Format: Algo [AM] LR Gamma Training
             parts = [str(algo)]
-            if att_code:
-                parts.append(att_code)
+            if att_display:
+                parts.append(att_display)
             if lr_str:
                 parts.append(lr_str)
             if gm_str:
@@ -1348,8 +1376,8 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
             vmax=upper_bound, 
             cbar_kws={'label': 'Avg Eval Score'}, 
             ax=ax,
-            linewidths=1,
-            linecolor='white'
+            linewidths=0.2,
+            # linecolor='grey'
         )
         ax.set_title('A. OVERALL PERFORMANCE (Avg Score)', fontsize=14, fontweight='bold', loc='left', pad=15)
         ax.set_xlabel('Attention Mechanism', fontweight='bold')
@@ -1449,6 +1477,358 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     finally:
         plt.close(fig)
 
+
+def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attention_mech: int, results_dir: str = "results"):
+    """
+    Generate a statistical hypothesis testing report: REINFORCE vs A2C, DQN, PPO.
+
+    Uses Welch's independent two-sample t-test (one-tailed, H₁: REINFORCE better than competitor).
+    Metric direction is handled correctly:
+      - Higher is better : Eval_Score, Tool Usage %   → H₁: REINFORCE > competitor  (t > 0 = good)
+      - Lower  is better : Lambda, Threshold Violations → t is NEGATED so positive t = REINFORCE better
+    Produces a 2×2 grid of t-statistic heatmaps:
+      - Rows    : With self-eval (full dataset) | Without self-eval (unseen data only)
+      - Columns : All attention mechanisms      | REINFORCE + best attention vs others
+
+    Each cell (competitor × metric) shows:
+      t-statistic (normalised), one-tailed p-value, significance stars.
+      Gold border = |t| ≥ 1.96 (statistically significant at α = 0.05).
+      Green    = REINFORCE better   |   Red = competitor better.
+
+    Args:
+        results_df    : DataFrame with evaluation results (all rounds)
+        schema        : 'SIT' or 'IEEE'
+        attention_mech: Attention mechanism flag (used only for filename labelling)
+        results_dir   : Output directory
+    """
+    try:
+        from scipy import stats as sp_stats
+    except ImportError:
+        print("  [!] scipy not found - skipping statistical analysis. Install: pip install scipy")
+        return
+
+    import matplotlib.cm as mcm
+    import matplotlib.colors as mcolors
+
+    print(f"\nGenerating hypothesis testing / statistical analysis report...")
+    os.makedirs(results_dir, exist_ok=True)
+
+    # ── Constants ─────────────────────────────────────────────────────────────
+    COMPETITORS   = ['A2C', 'DQN', 'PPO']
+    METRICS       = ['Eval_Score', 'Tool Usage %', 'Lambda', 'Threshold Violations']
+    METRIC_LABELS = ['Eval Score', 'Tool Usage %', 'Lambda', 'Violations']
+
+    # ── Identify best attention mechanism for REINFORCE ───────────────────────
+    rf_all = results_df[results_df['Algorithm'] == 'REINFORCE'].copy()
+    if rf_all.empty:
+        print("  [!] No REINFORCE rows found – skipping statistical analysis.")
+        return
+
+    if 'Attention Mechanism' in rf_all.columns and rf_all['Attention Mechanism'].nunique() > 0:
+        attn_means = rf_all.groupby('Attention Mechanism')['Eval_Score'].mean()
+        best_attn  = attn_means.idxmax()
+        best_score = attn_means[best_attn]
+    else:
+        best_attn  = 'N/A'
+        best_score = rf_all['Eval_Score'].mean()
+
+    print(f"  Best attention for REINFORCE: {best_attn}  (mean Eval_Score = {best_score:.4f})")
+
+    # ── Helper: compute t-stat / p-value matrices ─────────────────────────────
+    # Metrics where LOWER values are better; t is negated so that
+    # positive t always means "REINFORCE is better" across all metrics.
+    LOWER_IS_BETTER = {'Lambda', 'Threshold Violations'}
+
+    def tstat_matrix(df, use_best_attn=False):
+        """
+        Returns (t_mat, p_mat) each of shape (len(COMPETITORS), len(METRICS)).
+        p_mat contains one-tailed p-values for H₁: REINFORCE better than competitor.
+
+        For higher-is-better metrics (Eval_Score, Tool Usage %): REINFORCE wins when t > 0.
+        For lower-is-better metrics (Lambda, Threshold Violations): t is NEGATED so that
+        a positive value still means REINFORCE is better (i.e. REINFORCE has lower value).
+        """
+        if use_best_attn and 'Attention Mechanism' in df.columns:
+            rf = df[(df['Algorithm'] == 'REINFORCE') & (df['Attention Mechanism'] == best_attn)]
+        else:
+            rf = df[df['Algorithm'] == 'REINFORCE']
+
+        t_mat = np.full((len(COMPETITORS), len(METRICS)), np.nan)
+        p_mat = np.ones ((len(COMPETITORS), len(METRICS)))
+
+        for i, algo in enumerate(COMPETITORS):
+            comp = df[df['Algorithm'] == algo]
+            for j, metric in enumerate(METRICS):
+                r_vals = rf[metric].dropna().values
+                c_vals = comp[metric].dropna().values
+                if len(r_vals) >= 2 and len(c_vals) >= 2:
+                    t, p2 = sp_stats.ttest_ind(r_vals, c_vals, equal_var=False)
+                    # For lower-is-better metrics, negate t so positive = REINFORCE better
+                    if metric in LOWER_IS_BETTER:
+                        t = -t
+                    # One-tailed: H₁: REINFORCE better than competitor (positive t after normalisation)
+                    p1 = p2 / 2.0 if t > 0 else 1.0 - p2 / 2.0
+                    t_mat[i, j] = round(t, 4)
+                    p_mat[i, j] = round(p1, 4)
+        return t_mat, p_mat
+
+    def sig_stars(p):
+        if np.isnan(p) or p >= 0.05: return 'ns'
+        elif p < 0.001: return '***'
+        elif p < 0.01:  return '**'
+        else:           return '*'
+
+    # ── Build four panel scenarios ─────────────────────────────────────────────
+    df_full   = results_df
+    df_unseen = results_df[results_df['Self-eval'] == 'N']
+
+    panels_def = [
+        (df_full,   False, 'A.  All Attention Mechanisms'),
+        (df_full,   True,  f'B.  REINFORCE: {best_attn}  vs  Others (any attention)'),
+        (df_unseen, False, 'C.  All Attention Mechanisms'),
+        (df_unseen, True,  f'D.  REINFORCE: {best_attn}  vs  Others (any attention)'),
+    ]
+
+    panels = []
+    for df, use_best, title in panels_def:
+        if df.empty:
+            t_mat = np.zeros((len(COMPETITORS), len(METRICS)))
+            p_mat = np.ones ((len(COMPETITORS), len(METRICS)))
+        else:
+            t_mat, p_mat = tstat_matrix(df, use_best)
+        panels.append((t_mat, p_mat, title))
+
+    # ── ASCII / Markdown / CSV output ─────────────────────────────────────────
+    panel_short_names = [
+        'A. All Attn - With Self-eval',
+        f'B. Best Attn ({best_attn}) - With Self-eval',
+        'C. All Attn - Unseen Only',
+        f'D. Best Attn ({best_attn}) - Unseen Only',
+    ]
+
+    rows = []
+    for (t_mat, p_mat, _), panel_name in zip(panels, panel_short_names):
+        for i, competitor in enumerate(COMPETITORS):
+            for j, (metric, mlabel) in enumerate(zip(METRICS, METRIC_LABELS)):
+                t_val = t_mat[i, j]
+                p_val = p_mat[i, j]
+                stars = sig_stars(p_val)
+                sig   = 'YES' if (not np.isnan(p_val) and p_val < 0.05) else 'no'
+                rows.append({
+                    'Panel'           : panel_name,
+                    'Competitor'      : competitor,
+                    'Metric'          : mlabel,
+                    'T-Statistic'     : f'{t_val:+.4f}' if not np.isnan(t_val) else 'N/A',
+                    'P-Value (1-tail)': f'{p_val:.4f}'  if not np.isnan(p_val) else 'N/A',
+                    'Significance'    : stars,
+                    'Sig (α=0.05)'    : sig,
+                    'REINFORCE wins?' : ('Yes' if (not np.isnan(t_val) and t_val > 0 and not np.isnan(p_val) and p_val < 0.05) else '—'),
+                })
+
+    stat_df = pd.DataFrame(rows)
+
+    # # ── 1. Plain ASCII table ───────────────────────────────────────────────────
+    # ascii_banner = (
+    #     '\n' + '=' * 120 + '\n'
+    #     'HYPOTHESIS TEST RESULTS  |  H1: REINFORCE > Competitor  |  '
+    #     f'Schema: {schema}  |  Welch t-test (one-tailed)  |  Best REINFORCE attn: {best_attn}\n'
+    #     + '=' * 120
+    # )
+    # print(ascii_banner)
+    # print(stat_df.to_string(index=False))
+    # print('=' * 120)
+    # print('Significance: *** p<0.001  |  ** p<0.01  |  * p<0.05  |  ns = not significant')
+    # print('Positive T-statistic = REINFORCE scores higher than competitor on that metric')
+    # print('=' * 120 + '\n')
+
+    # # ── 2. Markdown table (copy-paste ready for reports / slides) ─────────────
+    # def _to_markdown(df: pd.DataFrame) -> str:
+    #     cols = df.columns.tolist()
+    #     header = '| ' + ' | '.join(cols) + ' |'
+    #     sep    = '| ' + ' | '.join(['---'] * len(cols)) + ' |'
+    #     body   = '\n'.join(
+    #         '| ' + ' | '.join(str(v) for v in row) + ' |'
+    #         for _, row in df.iterrows()
+    #     )
+    #     return '\n'.join([header, sep, body])
+
+    # print('\n' + '─' * 120)
+    # print('MARKDOWN TABLE (copy-paste into your report or slides):')
+    # print('─' * 120)
+    # print(_to_markdown(stat_df))
+    # print('─' * 120 + '\n')
+
+    # ── 3. Save CSV ────────────────────────────────────────────────────────────
+    timestamp  = datetime.now().strftime('%Y%m%d_%H%M%S')
+    att_label  = 'AM' if attention_mech else 'NoAM'
+    csv_path   = os.path.join(results_dir, f'Hypothesis_Test_Results_{schema}_{att_label}_{timestamp}.csv')
+    stat_df.to_csv(csv_path, index=False)
+    print(f'  ✓ Hypothesis test results CSV saved: {csv_path}\n')
+
+    # Global symmetric colour scale
+    all_t    = np.concatenate([p[0].flatten() for p in panels])
+    finite_t = all_t[np.isfinite(all_t)]
+    t_abs_max = max(np.abs(finite_t).max() if len(finite_t) else 3.0, 2.0)
+    t_abs_max = np.ceil(t_abs_max * 2) / 2.0   # round up to nearest 0.5
+
+    # ── Figure ─────────────────────────────────────────────────────────────────
+    sns.set_theme(style='white')
+
+    fig = plt.figure(figsize=(24, 19))
+    fig.patch.set_facecolor('#FAFBFF')
+
+    # GridSpec: 6 rows × 2 cols
+    #  row 0 : main title  (thin)
+    #  row 1 : section banner 1 "INCLUDING self-eval"  (thin)
+    #  row 2 : top heatmaps  (compact)
+    #  row 3 : section banner 2 "EXCLUDING self-eval"  (thin)
+    #  row 4 : bottom heatmaps  (compact)
+    #  row 5 : colorbar + legend  (thin)
+    gs = fig.add_gridspec(
+        6, 2,
+        height_ratios=[0.32, 0.18, 2.5, 0.18, 2.5, 0.50],
+        hspace=0.12, wspace=0.30,
+        left=0.07, right=0.97, top=0.97, bottom=0.03
+    )
+
+    # ── Main title ─────────────────────────────────────────────────────────────
+    ax_title = fig.add_subplot(gs[0, :])
+    ax_title.axis('off')
+    ax_title.text(
+        0.5, 0.92,
+        f"Statistical Analysis - REINFORCE vs A2C, DQN, PPO  |  Schema: {schema}",
+        ha='center', va='top', fontsize=26, fontweight='bold', color='#1a1a2e',
+        transform=ax_title.transAxes
+    )
+    ax_title.text(
+        0.5, 0.28,
+        (f"Welch's independent t-test (one-tailed, H1: REINFORCE better than competitor)  |  "
+         f"Positive t = REINFORCE better  (Lambda & Violations: t negated; lower = better = green)  |  "
+         f"Best attention for REINFORCE: {best_attn}  |  "
+         f"Critical |t| ~1.96 (alpha=0.05)  |  "
+         f"Generated: {datetime.now():%Y-%m-%d %H:%M}"),
+        ha='center', va='top', fontsize=13, color='#55557f',
+        transform=ax_title.transAxes
+    )
+
+    # ── Section banners ────────────────────────────────────────────────────────
+    banner_cfg = [
+        (1, '#1a1a2e',
+         "[1] INCLUDING SELF-EVALUATION  (Full Dataset - trained files + unseen files)",
+         "Left panel: all attention mechanisms.   "
+         "Right panel: REINFORCE restricted to best attention; competitors unrestricted."),
+        (3, '#1b3a5c',
+         "[2] EXCLUDING SELF-EVALUATION  (Unseen Data Only - generalisation test)",
+         "Same structure - only rows where Self-eval = N.   "
+         "Tests whether REINFORCE generalises better than other algorithms."),
+    ]
+    for row_idx, bg, main_text, sub_text in banner_cfg:
+        ax_b = fig.add_subplot(gs[row_idx, :])
+        ax_b.axis('off')
+        ax_b.set_facecolor(bg)
+        ax_b.add_patch(plt.Rectangle((0, 0), 1, 1, transform=ax_b.transAxes, color=bg, zorder=0))
+        ax_b.text(0.015, 0.80, main_text, ha='left', va='top',
+                  fontsize=16, fontweight='bold', color='white',
+                  transform=ax_b.transAxes)
+        ax_b.text(0.015, 0.12, sub_text, ha='left', va='bottom',
+                  fontsize=13, color='#aaccee', transform=ax_b.transAxes)
+
+    # ── Draw the four t-statistic heatmaps ─────────────────────────────────────
+    positions = [(2, 0), (2, 1), (4, 0), (4, 1)]
+    div_cmap  = 'RdYlGn'   # red=neg (REINFORCE lower), yellow=neutral, green=pos (REINFORCE higher)
+
+    for (gs_row, gs_col), (t_mat, p_mat, panel_title) in zip(positions, panels):
+        ax = fig.add_subplot(gs[gs_row, gs_col])
+
+        # Build annotation strings
+        annot = np.empty_like(t_mat, dtype=object)
+        for i in range(len(COMPETITORS)):
+            for j in range(len(METRICS)):
+                if np.isnan(t_mat[i, j]):
+                    annot[i, j] = 'N/A'
+                else:
+                    stars = sig_stars(p_mat[i, j])
+                    annot[i, j] = f"t = {t_mat[i, j]:+.2f}\np = {p_mat[i, j]:.3f}  {stars}"
+
+        t_display = np.where(np.isnan(t_mat), 0.0, t_mat)
+
+        sns.heatmap(
+            t_display,
+            annot=annot,
+            fmt='',
+            cmap=div_cmap,
+            vmin=-t_abs_max,
+            vmax=t_abs_max,
+            center=0,
+            linewidths=0.2,
+            # linecolor='white',
+            ax=ax,
+            cbar=False,
+            xticklabels=METRIC_LABELS,
+            yticklabels=COMPETITORS,
+            annot_kws={'size': 13, 'va': 'center', 'color': '#1a1a1a', 'fontweight': 'bold'},
+        )
+
+        # Gold border for cells where |t| >= 1.96 (95% confidence)
+        for i in range(len(COMPETITORS)):
+            for j in range(len(METRICS)):
+                if not np.isnan(t_mat[i, j]) and abs(t_mat[i, j]) >= 1.96:
+                    ax.add_patch(plt.Rectangle(
+                        (j, i), 1, 1,
+                        fill=False, edgecolor="#CDEB23", lw=0.5, zorder=4
+                    ))
+
+        ax.set_title(panel_title, fontsize=16, fontweight='bold',
+                     loc='left', pad=12, color='#1a1a2e')
+        ax.set_xlabel('Metric', fontsize=14, fontweight='bold', labelpad=8)
+        ax.set_ylabel('Competitor Algorithm', fontsize=14, fontweight='bold', labelpad=8)
+        ax.tick_params(axis='x', labelsize=15, rotation=20)
+        ax.tick_params(axis='y', labelsize=16, rotation=0)
+
+    # ── Shared colorbar + legend ───────────────────────────────────────────────
+    ax_cb = fig.add_subplot(gs[5, :])
+    ax_cb.axis('off')
+
+    norm = mcolors.Normalize(vmin=-t_abs_max, vmax=t_abs_max)
+    sm   = mcm.ScalarMappable(cmap=div_cmap, norm=norm)
+    sm.set_array([])
+
+    cb = fig.colorbar(sm, ax=ax_cb, orientation='horizontal',
+                      fraction=0.40, pad=0.04, aspect=50,
+                      shrink=0.85)
+    cb.set_label('t-statistic  (positive = REINFORCE better; Lambda & Violations t is negated so lower value = positive)',
+                 fontsize=14, labelpad=8)
+    cb.ax.tick_params(labelsize=13)
+
+    # Reference lines on colorbar
+    for tv, col, ls in [(-1.96, '#FFD700', '--'), (0.0, '#444', '-'), (1.96, '#FFD700', '--')]:
+        cb.ax.axvline(x=tv, color=col, lw=1.8, linestyle=ls)
+
+    ax_cb.text(
+        0.5, 0.02,
+        ("Significance:  *** p < 0.001   |   ** p < 0.01   |   * p < 0.05   |   ns = not significant   ||   "
+         "Gold border: |t| >= 1.96 (alpha=0.05)   ||   "
+         "Positive t = REINFORCE BETTER than competitor   "
+         "(for Lambda & Violations t is negated: lower value = better = positive t)"),
+        ha='center', va='bottom', fontsize=13, color='#333355',
+        transform=ax_cb.transAxes
+    )
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    att_label = "AM" if attention_mech else "NoAM"
+    filename  = f"Statistical_Analysis_{schema}_{att_label}_{timestamp}.png"
+    filepath  = os.path.join(results_dir, filename)
+
+    try:
+        plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
+        print(f"  ✓ Statistical analysis saved: {filepath}")
+    except Exception as e:
+        print(f"  [!] Failed to save statistical analysis: {e}")
+    finally:
+        plt.close(fig)
+
+    return filepath
 
 
 def main():
@@ -1735,7 +2115,10 @@ Examples:
 
         print(f"\nGenerating analysis report from final evaluation results...")
         generate_analysis_report(results_df, args.schema, attention_mech)
-        
+
+        print(f"\nGenerating statistical analysis / hypothesis testing report...")
+        generate_statistical_analysis(results_df, args.schema, attention_mech)
+
         # Phase 6: Mark batch as complete
         if batch_id:
             mark_batch_complete(batch_id)

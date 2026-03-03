@@ -1,4 +1,24 @@
 ========================================
+HYPOTHESIS TESTING 03-Mar-2026
+========================================
+
+We are ready to add some hypothesis testing. This should be in additional analysis performed with the 3 previous (analysis.png,  heatmap.png and eval_results.csv)
+
+We want to prove with 95% confidence that REINFORCE is better than other algorithms (A2C, DQN, PPO). Or at the minimum that REINFORCE and PPO are comparable, which is great in itself as REINFORCE is computationally light weight and suitable for edge computing. So better than A2C, DQN.
+
+If this improvement was the result of an attention mechanism that helped REINFORCE match up to PPO - we would like to highlight that too
+
+Instructions:
+- I have attached a truncated Eval_Results file - so follow these instructions - while the results may not be what i want. When I feed the actual file - the results should show as per expectations
+- Use Evaluaion_Results.csv and create a new Statistical_Analysis report in image format
+- We want to do two analysis - later we may drop one - With SELF_EVAL = Y and SELF_EVAL = N, so one set of analysis *includes* the results on the file it was trained on and the other is *excluding* them
+- Do statistical t-tests on: REINFORCE vs ALL rest (A2C, PPO, DQN)
+- Do this for (1) overall eval_score, (2) tool usage, (3) lambda and (4) violations
+- if possible show nice scientific graphical, visually pleasing, plots - showing the t-statistic maybe? that shows gap between REINFORCE and rest (if 4 stats can be show for each A2C, DQN, PPO and REINFORCE - then thats fine too - we should be able to see the gap between REINFORCE and rest -or- at least that REINFORCE is close to PPO, but gap with A2C, DQN)
+- Show two sets: Inlcuding self eval (results of tested on training file) as one set in uppper half and with self-eval = N, i.e. tested on unseen data, in 2nd half
+- NOW: one more dimension to be shown. With and without the best attention,  depending on which attention mechanism perormed best for REINFORCE (imporant REINFORCE is the anchor), do t-test of REINFORCE + the best Atten versus all other alogs and any attention mechanisms they may have used (we dont care what attention other algos used - so long as REINFORCE combined with best attention beat them!!). This may show that it was the attention mechanism, boosting the REINFORCE performance. 
+
+========================================
 RESEARCH ARTICLE 02-Mar-2026
 ========================================
 Write an article Article.tex, suitable for publication in a high level scientific journal.
