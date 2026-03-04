@@ -3,28 +3,30 @@
 # Author: Rajesh Siraskar
 # CLI for training and evaluation of RL agents for Predictive Maintenance
 # ---------------------------------------------------------------------------------------
-# V.2.3: 03-Mar-2026: Heat-map - arrange: NW, TP, SA, MH
+# V.2.5: 04-Mar-2026: Added samples sizes and file name modifications
 # ---------------------------------------------------------------------------------------
 
 print('\n\n--------------------------------------------------------------------------')
 print('AutoRL - Train RL agents for Predictive Maintenance')
 print('--------------------------------------------------------------------------')
 print('Author: Rajesh Siraskar')
-print('Version: V.2.3 | 03-Mar-2026 -- Heat-map arrangement: NW, TP, SA, MH\n\n')
+print('Version: V.2.5 | 04-Mar-2026 -- Heat-map arrangement: NW, TP, SA, MH\n\n')
 print('CLI version that trains and evaluates RL agents on SIT and IEEE datasets')
-print('--------------------------------------------------------------------------')
-print('Usage:')
-print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
-print('Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99')
-print('AM options: 0, 1, NW, TP, MH, SA')
-print('Evaluation: train_agent.py -V -S IEEE   (all plots, single round)')
-print('Evaluation: train_agent.py -V 1 -S SIT  (3 main reports only, single round)')
-print('Evaluation: train_agent.py -V 2 -S SIT  (multi-round: EVAL_ROUNDS reps/combo, Multiround CSV)')
-print('Discover models: -D -S SIT to list all SIT models')
+# print('--------------------------------------------------------------------------')
+# print('Usage:')
+# print('Training:   train_agent.py -S SIT -A PPO,A2C,DQN,REINFORCE -E 1e4 -AM 1')
+# print('Grid Search: train_agent.py -S SIT -A PPO -E 200 -LR 0.001,0.0001 -G 0.95,0.99')
+# print('AM options: 0, 1, NW, TP, MH, SA')
+# print('Evaluation: train_agent.py -V -S IEEE   (all plots, single round)')
+# print('Evaluation: train_agent.py -V 1 -S SIT  (3 main reports only, single round)')
+# print('Evaluation: train_agent.py -V 2 -S SIT  (multi-round: EVAL_ROUNDS reps/combo, Multiround CSV)')
+# print('Discover models: -D -S SIT to list all SIT models')
 print('--------------------------------------------------------------------------\n\n')
 
 print(' - Loading libraries ...')
 import os
+
+from matplotlib.colors import LinearSegmentedColormap
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import argparse
 import sys
@@ -51,14 +53,15 @@ import rl_pdm
 
 print('- Loaded.\n - Starting AutoRL CLI Pipeline ...\n')
 
-
+# ======================================================================================
+# GLOBAL Constants (Checkpoint Database, Evaluation Rounds, Retry Limits)
+# ======================================================================================
+# timestamp_fmt = "%Y%m%d_%H%M%S"
+timestamp_fmt = "%b-%d"
 EVAL_ROUNDS = 20  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
 
-# ======================================================================================
-# CHECKPOINT DATABASE FUNCTIONS
-# ======================================================================================
 # Checkpoint Model Evaluation - recovery from failuer - Maximum retries
-RETRY_EVAL = 10
+RETRY_EVAL = 5
 CHECKPOINT_DB = "checkpoint.db"
 
 def init_checkpoint_db():
@@ -1104,13 +1107,13 @@ def save_results(results_df: pd.DataFrame, schema: str, attention_mech: int,
 
     # Create filename with timestamp
     now = datetime.now()
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    timestamp = now.strftime(timestamp_fmt)
     att_label = "AM" if attention_mech else "NoAM"
 
     if multiround:
-        filename = f"Evaluation_Results_Multiround_{schema}_{att_label}_{timestamp}.csv"
+        filename = f"_Evals_Multiround_{schema}_{timestamp}.csv"
     else:
-        filename = f"Evaluation_Results_{schema}_{att_label}_{timestamp}.csv"
+        filename = f"_Evals_Results_{schema}_{timestamp}.csv"
 
     filepath = os.path.join(results_dir, filename)
 
@@ -1278,9 +1281,9 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     
     # Save single heatmap
     now = datetime.now()
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    timestamp = now.strftime(timestamp_fmt)
     att_label = "AM" if attention_mech else "NoAM"
-    filename = f"Heatmap_AllAgents_{schema}_{att_label}_{timestamp}.png"
+    filename = f"_Heatmap_{schema}_{timestamp}.png"
     filepath = os.path.join(results_dir, filename)
     
     fig.savefig(filepath, dpi=150, bbox_inches='tight')
@@ -1464,9 +1467,9 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     
     # Save
     now = datetime.now()
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    timestamp = now.strftime(timestamp_fmt)
     att_label = "AM" if attention_mech else "NoAM"
-    filename = f"Analysis_Report_{schema}_{att_label}_{timestamp}.png"
+    filename = f"_Analysis_Report_{schema}_{timestamp}.png"
     filepath = os.path.join(results_dir, filename)
     
     try:
@@ -1541,8 +1544,9 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
 
     def tstat_matrix(df, use_best_attn=False):
         """
-        Returns (t_mat, p_mat) each of shape (len(COMPETITORS), len(METRICS)).
+        Returns (t_mat, p_mat, n_rf_mat, n_comp_mat) each of shape (len(COMPETITORS), len(METRICS)).
         p_mat contains one-tailed p-values for H₁: REINFORCE better than competitor.
+        n_rf_mat / n_comp_mat record the sample sizes used for each cell.
 
         For higher-is-better metrics (Eval_Score, Tool Usage %): REINFORCE wins when t > 0.
         For lower-is-better metrics (Lambda, Threshold Violations): t is NEGATED so that
@@ -1553,14 +1557,18 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
         else:
             rf = df[df['Algorithm'] == 'REINFORCE']
 
-        t_mat = np.full((len(COMPETITORS), len(METRICS)), np.nan)
-        p_mat = np.ones ((len(COMPETITORS), len(METRICS)))
+        t_mat      = np.full((len(COMPETITORS), len(METRICS)), np.nan)
+        p_mat      = np.ones ((len(COMPETITORS), len(METRICS)))
+        n_rf_mat   = np.zeros((len(COMPETITORS), len(METRICS)), dtype=int)
+        n_comp_mat = np.zeros((len(COMPETITORS), len(METRICS)), dtype=int)
 
         for i, algo in enumerate(COMPETITORS):
             comp = df[df['Algorithm'] == algo]
             for j, metric in enumerate(METRICS):
                 r_vals = rf[metric].dropna().values
                 c_vals = comp[metric].dropna().values
+                n_rf_mat[i, j]   = len(r_vals)
+                n_comp_mat[i, j] = len(c_vals)
                 if len(r_vals) >= 2 and len(c_vals) >= 2:
                     t, p2 = sp_stats.ttest_ind(r_vals, c_vals, equal_var=False)
                     # For lower-is-better metrics, negate t so positive = REINFORCE better
@@ -1570,7 +1578,7 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
                     p1 = p2 / 2.0 if t > 0 else 1.0 - p2 / 2.0
                     t_mat[i, j] = round(t, 4)
                     p_mat[i, j] = round(p1, 4)
-        return t_mat, p_mat
+        return t_mat, p_mat, n_rf_mat, n_comp_mat
 
     def sig_stars(p):
         if np.isnan(p) or p >= 0.05: return 'ns'
@@ -1592,11 +1600,23 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
     panels = []
     for df, use_best, title in panels_def:
         if df.empty:
-            t_mat = np.zeros((len(COMPETITORS), len(METRICS)))
-            p_mat = np.ones ((len(COMPETITORS), len(METRICS)))
+            t_mat      = np.zeros((len(COMPETITORS), len(METRICS)))
+            p_mat      = np.ones ((len(COMPETITORS), len(METRICS)))
+            n_rf_mat   = np.zeros((len(COMPETITORS), len(METRICS)), dtype=int)
+            n_comp_mat = np.zeros((len(COMPETITORS), len(METRICS)), dtype=int)
         else:
-            t_mat, p_mat = tstat_matrix(df, use_best)
-        panels.append((t_mat, p_mat, title))
+            t_mat, p_mat, n_rf_mat, n_comp_mat = tstat_matrix(df, use_best)
+        # Build a concise "(Sample sizes: N/M)" label for this panel.
+        # N = REINFORCE sample count (same across competitors; use first competitor / Eval_Score).
+        # M = competitor sample count: show a range if competitors differ, else a single number.
+        n_rf_ref   = int(n_rf_mat[0, 0])                    # REINFORCE N (Eval_Score reference)
+        n_comp_ref = n_comp_mat[:, 0].astype(int)           # competitor Ns for Eval_Score
+        if n_comp_ref.min() == n_comp_ref.max():
+            m_label = str(n_comp_ref[0])
+        else:
+            m_label = f"{n_comp_ref.min()}–{n_comp_ref.max()}"
+        title_with_n = f"{title}  (Sample sizes: {n_rf_ref}/{m_label})"
+        panels.append((t_mat, p_mat, n_rf_mat, n_comp_mat, title_with_n))
 
     # ── ASCII / Markdown / CSV output ─────────────────────────────────────────
     panel_short_names = [
@@ -1607,7 +1627,7 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
     ]
 
     rows = []
-    for (t_mat, p_mat, _), panel_name in zip(panels, panel_short_names):
+    for (t_mat, p_mat, n_rf_mat, n_comp_mat, _), panel_name in zip(panels, panel_short_names):
         for i, competitor in enumerate(COMPETITORS):
             for j, (metric, mlabel) in enumerate(zip(METRICS, METRIC_LABELS)):
                 t_val = t_mat[i, j]
@@ -1615,220 +1635,272 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
                 stars = sig_stars(p_val)
                 sig   = 'YES' if (not np.isnan(p_val) and p_val < 0.05) else 'no'
                 rows.append({
-                    'Panel'           : panel_name,
-                    'Competitor'      : competitor,
-                    'Metric'          : mlabel,
-                    'T-Statistic'     : f'{t_val:+.4f}' if not np.isnan(t_val) else 'N/A',
-                    'P-Value (1-tail)': f'{p_val:.4f}'  if not np.isnan(p_val) else 'N/A',
-                    'Significance'    : stars,
-                    'Sig (α=0.05)'    : sig,
-                    'REINFORCE wins?' : ('Yes' if (not np.isnan(t_val) and t_val > 0 and not np.isnan(p_val) and p_val < 0.05) else '—'),
+                    'Panel'                 : panel_name,
+                    'Competitor'            : competitor,
+                    'Metric'               : mlabel,
+                    'T-Statistic'          : f'{t_val:+.4f}' if not np.isnan(t_val) else 'N/A',
+                    'P-Value (1-tail)'     : f'{p_val:.4f}'  if not np.isnan(p_val) else 'N/A',
+                    'Significance'         : stars,
+                    'Sig (α=0.05)'         : sig,
+                    'REINFORCE wins?'      : ('Yes' if (not np.isnan(t_val) and t_val > 0 and not np.isnan(p_val) and p_val < 0.05) else '—'),
+                    'REINFORCE Sample Size': int(n_rf_mat[i, j]),
+                    'Others Sample Size'   : int(n_comp_mat[i, j]),
                 })
 
     stat_df = pd.DataFrame(rows)
 
-    # # ── 1. Plain ASCII table ───────────────────────────────────────────────────
-    # ascii_banner = (
-    #     '\n' + '=' * 120 + '\n'
-    #     'HYPOTHESIS TEST RESULTS  |  H1: REINFORCE > Competitor  |  '
-    #     f'Schema: {schema}  |  Welch t-test (one-tailed)  |  Best REINFORCE attn: {best_attn}\n'
-    #     + '=' * 120
-    # )
-    # print(ascii_banner)
-    # print(stat_df.to_string(index=False))
-    # print('=' * 120)
-    # print('Significance: *** p<0.001  |  ** p<0.01  |  * p<0.05  |  ns = not significant')
-    # print('Positive T-statistic = REINFORCE scores higher than competitor on that metric')
-    # print('=' * 120 + '\n')
-
-    # # ── 2. Markdown table (copy-paste ready for reports / slides) ─────────────
-    # def _to_markdown(df: pd.DataFrame) -> str:
-    #     cols = df.columns.tolist()
-    #     header = '| ' + ' | '.join(cols) + ' |'
-    #     sep    = '| ' + ' | '.join(['---'] * len(cols)) + ' |'
-    #     body   = '\n'.join(
-    #         '| ' + ' | '.join(str(v) for v in row) + ' |'
-    #         for _, row in df.iterrows()
-    #     )
-    #     return '\n'.join([header, sep, body])
-
-    # print('\n' + '─' * 120)
-    # print('MARKDOWN TABLE (copy-paste into your report or slides):')
-    # print('─' * 120)
-    # print(_to_markdown(stat_df))
-    # print('─' * 120 + '\n')
-
     # ── 3. Save CSV ────────────────────────────────────────────────────────────
-    timestamp  = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp  = datetime.now().strftime(timestamp_fmt)
     att_label  = 'AM' if attention_mech else 'NoAM'
-    csv_path   = os.path.join(results_dir, f'Hypothesis_Test_Results_{schema}_{att_label}_{timestamp}.csv')
+    csv_path   = os.path.join(results_dir, f'_Hypothesis_Tests_{schema}_{timestamp}.csv')
     stat_df.to_csv(csv_path, index=False)
     print(f'  ✓ Hypothesis test results CSV saved: {csv_path}\n')
 
-    # Global symmetric colour scale
-    all_t    = np.concatenate([p[0].flatten() for p in panels])
+    # Global symmetric colour scale (for t-stat plots)
+    all_t    = np.concatenate([p[0].flatten() for p in panels])  # panels[i][0] is t_mat
     finite_t = all_t[np.isfinite(all_t)]
     t_abs_max = max(np.abs(finite_t).max() if len(finite_t) else 3.0, 2.0)
     t_abs_max = np.ceil(t_abs_max * 2) / 2.0   # round up to nearest 0.5
 
-    # ── Figure ─────────────────────────────────────────────────────────────────
-    sns.set_theme(style='white')
+    # ── Helper: build one complete figure (t-stat OR p-value version) ──────────
+    def _build_stat_figure(mode='t'):
+        """
+        mode='t'    → t-statistic heatmaps, symmetric RdYlGn scale.
+        mode='pval' → p-value heatmaps, RdYlGn_r scale (green=significant=p~0).
+        """
+        sns.set_theme(style='white')
 
-    fig = plt.figure(figsize=(24, 19))
-    fig.patch.set_facecolor('#FAFBFF')
+        # Taller figure + generous height ratios so banners never crush heatmaps
+        fig = plt.figure(figsize=(24, 28))
+        fig.patch.set_facecolor('#FAFBFF')
 
-    # GridSpec: 6 rows × 2 cols
-    #  row 0 : main title  (thin)
-    #  row 1 : section banner 1 "INCLUDING self-eval"  (thin)
-    #  row 2 : top heatmaps  (compact)
-    #  row 3 : section banner 2 "EXCLUDING self-eval"  (thin)
-    #  row 4 : bottom heatmaps  (compact)
-    #  row 5 : colorbar + legend  (thin)
-    gs = fig.add_gridspec(
-        6, 2,
-        height_ratios=[0.32, 0.18, 2.5, 0.18, 2.5, 0.50],
-        hspace=0.12, wspace=0.30,
-        left=0.07, right=0.97, top=0.97, bottom=0.03
-    )
-
-    # ── Main title ─────────────────────────────────────────────────────────────
-    ax_title = fig.add_subplot(gs[0, :])
-    ax_title.axis('off')
-    ax_title.text(
-        0.5, 0.92,
-        f"Statistical Analysis - REINFORCE vs A2C, DQN, PPO  |  Schema: {schema}",
-        ha='center', va='top', fontsize=26, fontweight='bold', color='#1a1a2e',
-        transform=ax_title.transAxes
-    )
-    ax_title.text(
-        0.5, 0.28,
-        (f"Welch's independent t-test (one-tailed, H1: REINFORCE better than competitor)  |  "
-         f"Positive t = REINFORCE better  (Lambda & Violations: t negated; lower = better = green)  |  "
-         f"Best attention for REINFORCE: {best_attn}  |  "
-         f"Critical |t| ~1.96 (alpha=0.05)  |  "
-         f"Generated: {datetime.now():%Y-%m-%d %H:%M}"),
-        ha='center', va='top', fontsize=13, color='#55557f',
-        transform=ax_title.transAxes
-    )
-
-    # ── Section banners ────────────────────────────────────────────────────────
-    banner_cfg = [
-        (1, '#1a1a2e',
-         "[1] INCLUDING SELF-EVALUATION  (Full Dataset - trained files + unseen files)",
-         "Left panel: all attention mechanisms.   "
-         "Right panel: REINFORCE restricted to best attention; competitors unrestricted."),
-        (3, '#1b3a5c',
-         "[2] EXCLUDING SELF-EVALUATION  (Unseen Data Only - generalisation test)",
-         "Same structure - only rows where Self-eval = N.   "
-         "Tests whether REINFORCE generalises better than other algorithms."),
-    ]
-    for row_idx, bg, main_text, sub_text in banner_cfg:
-        ax_b = fig.add_subplot(gs[row_idx, :])
-        ax_b.axis('off')
-        ax_b.set_facecolor(bg)
-        ax_b.add_patch(plt.Rectangle((0, 0), 1, 1, transform=ax_b.transAxes, color=bg, zorder=0))
-        ax_b.text(0.015, 0.80, main_text, ha='left', va='top',
-                  fontsize=16, fontweight='bold', color='white',
-                  transform=ax_b.transAxes)
-        ax_b.text(0.015, 0.12, sub_text, ha='left', va='bottom',
-                  fontsize=13, color='#aaccee', transform=ax_b.transAxes)
-
-    # ── Draw the four t-statistic heatmaps ─────────────────────────────────────
-    positions = [(2, 0), (2, 1), (4, 0), (4, 1)]
-    div_cmap  = 'RdYlGn'   # red=neg (REINFORCE lower), yellow=neutral, green=pos (REINFORCE higher)
-
-    for (gs_row, gs_col), (t_mat, p_mat, panel_title) in zip(positions, panels):
-        ax = fig.add_subplot(gs[gs_row, gs_col])
-
-        # Build annotation strings
-        annot = np.empty_like(t_mat, dtype=object)
-        for i in range(len(COMPETITORS)):
-            for j in range(len(METRICS)):
-                if np.isnan(t_mat[i, j]):
-                    annot[i, j] = 'N/A'
-                else:
-                    stars = sig_stars(p_mat[i, j])
-                    annot[i, j] = f"t = {t_mat[i, j]:+.2f}\np = {p_mat[i, j]:.3f}  {stars}"
-
-        t_display = np.where(np.isnan(t_mat), 0.0, t_mat)
-
-        sns.heatmap(
-            t_display,
-            annot=annot,
-            fmt='',
-            cmap=div_cmap,
-            vmin=-t_abs_max,
-            vmax=t_abs_max,
-            center=0,
-            linewidths=0.2,
-            # linecolor='white',
-            ax=ax,
-            cbar=False,
-            xticklabels=METRIC_LABELS,
-            yticklabels=COMPETITORS,
-            annot_kws={'size': 13, 'va': 'center', 'color': '#1a1a1a', 'fontweight': 'bold'},
+        # GridSpec: 6 rows × 2 cols
+        #  row 0 : main title                         (generous height)
+        #  row 1 : section banner 1 "WITH self-eval"  (visible height)
+        #  row 2 : top heatmaps
+        #  row 3 : section banner 2 "WITHOUT self-eval"
+        #  row 4 : bottom heatmaps
+        #  row 5 : colorbar + legend
+        gs = fig.add_gridspec(
+            6, 2,
+            height_ratios=[0.55, 0.60, 3.0, 0.60, 3.0, 0.80],
+            hspace=0.55, wspace=0.32,
+            left=0.07, right=0.97, top=0.96, bottom=0.04
         )
 
-        # Gold border for cells where |t| >= 1.96 (95% confidence)
-        for i in range(len(COMPETITORS)):
-            for j in range(len(METRICS)):
-                if not np.isnan(t_mat[i, j]) and abs(t_mat[i, j]) >= 1.96:
-                    ax.add_patch(plt.Rectangle(
-                        (j, i), 1, 1,
-                        fill=False, edgecolor="#CDEB23", lw=0.5, zorder=4
-                    ))
+        # ── Main title ─────────────────────────────────────────────────────────
+        ax_title = fig.add_subplot(gs[0, :])
+        ax_title.axis('off')
 
-        ax.set_title(panel_title, fontsize=16, fontweight='bold',
-                     loc='left', pad=12, color='#1a1a2e')
-        ax.set_xlabel('Metric', fontsize=14, fontweight='bold', labelpad=8)
-        ax.set_ylabel('Competitor Algorithm', fontsize=14, fontweight='bold', labelpad=8)
-        ax.tick_params(axis='x', labelsize=15, rotation=20)
-        ax.tick_params(axis='y', labelsize=16, rotation=0)
+        if mode == 't':
+            mode_label = "t-Statistic Scale"
+            sub_desc   = (
+                f"Welch's independent t-test (one-tailed, H1: REINFORCE better than competitor)  |  "
+                f"Positive t = REINFORCE better  (Lambda & Violations: t negated; lower = better = green)  |  "
+                f"Best attention for REINFORCE: {best_attn}  |  "
+                f"Critical |t| ~1.96 (alpha=0.05)  |  "
+                f"Generated: {datetime.now():%Y-%m-%d %H:%M}"
+            )
+        else:
+            mode_label = "p-Value Scale"
+            sub_desc   = (
+                f"Welch's independent t-test (one-tailed, H1: REINFORCE better than competitor)  |  "
+                f"Green = low p-value = statistically significant  |  "
+                f"Best attention for REINFORCE: {best_attn}  |  "
+                f"Gold border: p < 0.05 (alpha=0.05)  |  "
+                f"Generated: {datetime.now():%Y-%m-%d %H:%M}"
+            )
 
-    # ── Shared colorbar + legend ───────────────────────────────────────────────
-    ax_cb = fig.add_subplot(gs[5, :])
-    ax_cb.axis('off')
+        ax_title.text(
+            0.5, 0.92,
+            f"Statistical Analysis - REINFORCE vs A2C, DQN, PPO  |  Schema: {schema}  |  {mode_label}",
+            ha='center', va='top', fontsize=24, fontweight='bold', color='#1a1a2e',
+            transform=ax_title.transAxes
+        )
+        ax_title.text(
+            0.5, 0.32,
+            sub_desc,
+            ha='center', va='top', fontsize=16, color='#55557f',
+            transform=ax_title.transAxes
+        )
 
-    norm = mcolors.Normalize(vmin=-t_abs_max, vmax=t_abs_max)
-    sm   = mcm.ScalarMappable(cmap=div_cmap, norm=norm)
-    sm.set_array([])
+        # ── Section banners ────────────────────────────────────────────────────
+        banner_cfg = [
+            (1, "#476CD3",
+             "[1] INCLUDING SELF-EVALUATION  (Full Dataset - trained files + unseen files)",
+             "Left panel: all attention mechanisms.   "
+             "Right panel: REINFORCE restricted to best attention; competitors unrestricted."),
+            (3, "#476CD3",
+             "[2] EXCLUDING SELF-EVALUATION  (Unseen Data Only - generalisation test)",
+             "Same structure - only rows where Self-eval = N.   "
+             "Tests whether REINFORCE generalises better than other algorithms."),
+        ]
+        for row_idx, bg, main_text, sub_text in banner_cfg:
+            ax_b = fig.add_subplot(gs[row_idx, :])
+            ax_b.axis('off')
+            ax_b.set_facecolor(bg)
+            ax_b.add_patch(plt.Rectangle((0, 0), 1, 1, transform=ax_b.transAxes, color=bg, zorder=0))
+            ax_b.text(0.015, 0.78, main_text, ha='left', va='top',
+                      fontsize=16, fontweight='bold', color='white',
+                      transform=ax_b.transAxes)
+            ax_b.text(0.015, 0.15, sub_text, ha='left', va='bottom',
+                      fontsize=14, color='#aaccee', transform=ax_b.transAxes)
 
-    cb = fig.colorbar(sm, ax=ax_cb, orientation='horizontal',
-                      fraction=0.40, pad=0.04, aspect=50,
-                      shrink=0.85)
-    cb.set_label('t-statistic  (positive = REINFORCE better; Lambda & Violations t is negated so lower value = positive)',
-                 fontsize=14, labelpad=8)
-    cb.ax.tick_params(labelsize=13)
+        # ── Draw the four heatmaps ──────────────────────────────────────────────
+        positions = [(2, 0), (2, 1), (4, 0), (4, 1)]
 
-    # Reference lines on colorbar
-    for tv, col, ls in [(-1.96, '#FFD700', '--'), (0.0, '#444', '-'), (1.96, '#FFD700', '--')]:
-        cb.ax.axvline(x=tv, color=col, lw=1.8, linestyle=ls)
+        start_hex = "#0790DF"  # A shade of blue
+        end_hex = "#F14260"    # A shade of redish-pink
 
-    ax_cb.text(
-        0.5, 0.02,
-        ("Significance:  *** p < 0.001   |   ** p < 0.01   |   * p < 0.05   |   ns = not significant   ||   "
-         "Gold border: |t| >= 1.96 (alpha=0.05)   ||   "
-         "Positive t = REINFORCE BETTER than competitor   "
-         "(for Lambda & Violations t is negated: lower value = better = positive t)"),
-        ha='center', va='bottom', fontsize=13, color='#333355',
-        transform=ax_cb.transAxes
-    )
+        # 2. Create the custom colormap
+        # The 'colors' list defines the gradient stops.
+        # You can include more colors for a multi-stop gradient (e.g., [start, middle, end]).
+        custom_colors = [start_hex, end_hex]
+        cmap_name = 'custom_gradient'
+        custom_cmap = LinearSegmentedColormap.from_list(cmap_name, custom_colors, N=256) # N defines the number of color bins for smooth gradient
 
-    # ── Save ──────────────────────────────────────────────────────────────────
+
+
+        if mode == 't':
+            cmap_name = 'RdYlGn'      # Berlin red=neg(bad), yellow=neutral, green=pos(REINFORCE better)
+        else:
+            # p-value: green=low p (significant), red=high p (not significant)
+            # RdYlGn_r: vmin→green, vmax→red  →  p=0.000 is bright green
+            cmap_name = custom_cmap
+
+        for (gs_row, gs_col), (t_mat, p_mat, n_rf_mat, n_comp_mat, panel_title) in zip(positions, panels):
+            ax = fig.add_subplot(gs[gs_row, gs_col])
+
+            if mode == 't':
+                display_mat = np.where(np.isnan(t_mat), 0.0, t_mat)
+                vmin, vmax, center = -t_abs_max, t_abs_max, 0
+
+                annot = np.empty_like(t_mat, dtype=object)
+                for i in range(len(COMPETITORS)):
+                    for j in range(len(METRICS)):
+                        if np.isnan(t_mat[i, j]):
+                            annot[i, j] = 'N/A'
+                        else:
+                            stars = sig_stars(p_mat[i, j])
+                            annot[i, j] = f"t = {t_mat[i, j]:+.2f}\np = {p_mat[i, j]:.3f}  {stars}"
+            else:
+                # p-value mode: clip to [0,1]; NaN → 1.0 (white/red = not significant)
+                display_mat = np.where(np.isnan(p_mat), 1.0, np.clip(p_mat, 0.0, 1.0))
+                vmin, vmax, center = 0.0, 1.0, None
+
+                annot = np.empty_like(p_mat, dtype=object)
+                for i in range(len(COMPETITORS)):
+                    for j in range(len(METRICS)):
+                        if np.isnan(p_mat[i, j]):
+                            annot[i, j] = 'N/A'
+                        else:
+                            stars = sig_stars(p_mat[i, j])
+                            annot[i, j] = f"p = {p_mat[i, j]:.3f}\n{stars}"
+
+            hm_kwargs = dict(
+                annot=annot,
+                fmt='',
+                cmap=cmap_name,
+                vmin=vmin,
+                vmax=vmax,
+                linewidths=0.25,
+                ax=ax,
+                cbar=False,
+                xticklabels=METRIC_LABELS,
+                yticklabels=COMPETITORS,
+                annot_kws={'size': 13, 'va': 'center', 'color': '#1a1a1a', 'fontweight': 'bold'},
+            )
+            if center is not None:
+                hm_kwargs['center'] = center
+            sns.heatmap(display_mat, **hm_kwargs)
+
+            # Gold border for significant cells
+            for i in range(len(COMPETITORS)):
+                for j in range(len(METRICS)):
+                    if mode == 't':
+                        highlight = (not np.isnan(t_mat[i, j]) and abs(t_mat[i, j]) >= 1.96)
+                    else:
+                        highlight = (not np.isnan(p_mat[i, j]) and p_mat[i, j] < 0.05)
+                    if highlight:
+                        ax.add_patch(plt.Rectangle(
+                            (j, i), 1, 1,
+                            fill=False, edgecolor="#A8F239", lw=2.0, zorder=4
+                        ))
+
+            ax.set_title(panel_title, fontsize=16, fontweight='bold',
+                         loc='left', pad=18, color='#1a1a2e')
+            ax.set_xlabel('Metric', fontsize=14, fontweight='bold', labelpad=10)
+            ax.set_ylabel('Competitor Algorithm', fontsize=14, fontweight='bold', labelpad=10)
+            ax.tick_params(axis='x', labelsize=14, rotation=20)
+            ax.tick_params(axis='y', labelsize=15, rotation=0)
+
+        # ── Shared colorbar + legend ───────────────────────────────────────────
+        ax_cb = fig.add_subplot(gs[5, :])
+        ax_cb.axis('off')
+
+        if mode == 't':
+            norm = mcolors.Normalize(vmin=-t_abs_max, vmax=t_abs_max)
+            sm   = mcm.ScalarMappable(cmap=cmap_name, norm=norm)
+            sm.set_array([])
+            cb = fig.colorbar(sm, ax=ax_cb, orientation='horizontal',
+                              fraction=0.40, pad=0.04, aspect=50, shrink=0.85)
+            cb.set_label(
+                't-statistic  (positive = REINFORCE better; Lambda & Violations t is negated so lower value = positive)',
+                fontsize=13, labelpad=8)
+            cb.ax.tick_params(labelsize=12)
+            for tv, col, ls in [(-1.96, '#FFD700', '--'), (0.0, '#444', '-'), (1.96, '#FFD700', '--')]:
+                cb.ax.axvline(x=tv, color=col, lw=1.8, linestyle=ls)
+            legend_text = (
+                "Significance:  *** p < 0.001   |   ** p < 0.01   |   * p < 0.05   |   ns = not significant   ||   "
+                "Gold border: |t| >= 1.96 (alpha=0.05)   ||   "
+                "Positive t = REINFORCE BETTER than competitor   "
+                "(for Lambda & Violations t is negated: lower value = better = positive t)"
+            )
+        else:
+            norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
+            sm   = mcm.ScalarMappable(cmap=cmap_name, norm=norm)
+            sm.set_array([])
+            cb = fig.colorbar(sm, ax=ax_cb, orientation='horizontal',
+                              fraction=0.40, pad=0.04, aspect=50, shrink=0.85)
+            cb.set_label('p-value  (green = significant = low p; red = not significant = high p)',
+                         fontsize=13, labelpad=8)
+            cb.ax.tick_params(labelsize=12)
+            # Mark alpha=0.05 threshold on colorbar
+            cb.ax.axvline(x=0.05, color='#FFD700', lw=2.0, linestyle='--')
+            cb.ax.axvline(x=0.50, color='#888888', lw=1.2, linestyle=':')
+            legend_text = (
+                "Significance:  *** p < 0.001   |   ** p < 0.01   |   * p < 0.05   |   ns = not significant   ||   "
+                "Gold border: p < 0.05 (alpha=0.05)   ||   "
+                "Bright green = p ≈ 0.000 (highly significant)   |   Red = p ≈ 1.000 (not significant)"
+            )
+
+        ax_cb.text(
+            0.5, 0.02, legend_text,
+            ha='center', va='bottom', fontsize=12, color='#333355',
+            transform=ax_cb.transAxes
+        )
+
+        return fig
+
+    # ── Build & save both figures ──────────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     att_label = "AM" if attention_mech else "NoAM"
-    filename  = f"Statistical_Analysis_{schema}_{att_label}_{timestamp}.png"
-    filepath  = os.path.join(results_dir, filename)
+    saved_paths = []
 
-    try:
-        plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
-        print(f"  ✓ Statistical analysis saved: {filepath}")
-    except Exception as e:
-        print(f"  [!] Failed to save statistical analysis: {e}")
-    finally:
-        plt.close(fig)
+    for mode, name_key in [('t', '_Statistical_t'), ('pval', '_Statistical_p-value')]:
+        fig = _build_stat_figure(mode=mode)
+        filename = f"{name_key}_{schema}_{timestamp}.png"
+        filepath = os.path.join(results_dir, filename)
+        try:
+            plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
+            print(f"  ✓ Statistical analysis saved: {filepath}")
+            saved_paths.append(filepath)
+        except Exception as e:
+            print(f"  [!] Failed to save {filename}: {e}")
+        finally:
+            plt.close(fig)
 
-    return filepath
+    return saved_paths[0] if saved_paths else None
 
 
 def main():
