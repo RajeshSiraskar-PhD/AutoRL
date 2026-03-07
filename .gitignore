@@ -20,7 +20,6 @@ Test*
 test*
 *.xls
 Evaluation_Results*
-*.ipynb
 checkpoint*
 .DS_*
 Thesis_Work*

@@ -57,11 +57,12 @@ print('- Loaded.\n - Starting AutoRL CLI Pipeline ...\n')
 # GLOBAL Constants (Checkpoint Database, Evaluation Rounds, Retry Limits)
 # ======================================================================================
 # timestamp_fmt = "%Y%m%d_%H%M%S"
-timestamp_fmt = "%b-%d"
+timestamp_fmt = "%b-%d_%H%M"
 EVAL_ROUNDS = 20  # Number of evaluation rounds for multi-round evaluation (if -V N specified)
+INDIVDUAL_PLOTS = False
 
 # Checkpoint Model Evaluation - recovery from failuer - Maximum retries
-RETRY_EVAL = 5
+RETRY_EVAL = 10
 CHECKPOINT_DB = "checkpoint.db"
 
 def init_checkpoint_db():
@@ -2158,16 +2159,15 @@ Examples:
             results_df = evaluate_agents(
                 schema=args.schema,
                 trained_models=trained_models,
-                skip_individual_plots=True,     # no per-model plots in multi-round
+                skip_individual_plots=not INDIVDUAL_PLOTS,
                 num_eval_rounds=EVAL_ROUNDS,    # always use the global constant
             )
         # ── Single-round mode (N=0 or N=1) ───────────────────────────────────────
         else:
-            skip_individual_plots = (args.eval_only == 1)
             results_df = evaluate_agents(
                 schema=args.schema,
                 trained_models=trained_models,
-                skip_individual_plots=skip_individual_plots,
+                skip_individual_plots=not INDIVDUAL_PLOTS,
                 num_eval_rounds=1,
             )
 
