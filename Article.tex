@@ -70,18 +70,26 @@ The pipeline supports:
 In addition to model files, each trained agent writes a metadata JSON containing algorithm, attention mechanism, training file, learning rate, discount factor, number of episodes, and training summaries.
 
 \section{Predictive maintenance as a Markov decision process}
-\subsection{MDP formulation}
-We model the maintenance decision problem as an episodic Markov decision process (MDP) $\mathcal{M}=(\mathcal{S},\mathcal{A},P,r,\gamma)$~\cite{SuttonBarto2018}. At discrete timestep $t$, the agent observes a sensor vector $\mathbf{x}_t\in\mathbb{R}^d$ and chooses an action
+\subsection{MDP and POMDP formulation}
+We model the maintenance decision problem as an episodic Markov decision process (MDP) $\mathcal{M}=(\mathcal{S},\mathcal{A},P,r,\gamma)$~\cite{SuttonBarto2018}, where $\mathcal{S}$ is the set of environment states, $\mathcal{A}$ is the action space, $P$ is the transition kernel, $r$ is the reward function, and $\gamma$ is the discount factor. At each discrete timestep $t$, the agent chooses an action
 \begin{equation}
   a_t \in \mathcal{A}=\{0,1\},
 \end{equation}
 where $a_t=0$ denotes \emph{replace} and $a_t=1$ denotes \emph{continue}. The environment evolves along a recorded run-to-failure dataset where the latent degradation variable (tool wear) is $w_t$.
 
-\subsection{Observation design: wear is hidden}
-A critical modelling choice is that $w_t$ is \emph{excluded} from observations. The agent must infer maintenance decisions solely from sensors (forces, vibrations, acoustics, currents), which aligns with realistic deployments where true wear is expensive or impossible to measure in real time. Formally, the observation is
+\paragraph{Hidden states and partial observability.}
+In classical MDPs, the agent observes the full state $s_t$ at each step. However, in real-world predictive maintenance, the true state (e.g., tool wear $w_t$) is often \emph{hidden} and cannot be measured directly. Instead, the agent receives a partial observation $o_t$ derived from sensor signals. This setting is more accurately described as a \emph{partially observable MDP} (POMDP), defined by $\mathcal{M}'=(\mathcal{S},\mathcal{A},P,r,\gamma,\mathcal{O},O)$, where $\mathcal{O}$ is the observation space and $O$ is the observation function:
 \begin{equation}
-  s_t \equiv \mathbf{x}_t = \mathrm{Sensors}(t),\qquad w_t\notin s_t.
+  o_t = O(s_t) = \mathrm{Sensors}(t), \qquad w_t \notin o_t.
 \end{equation}
+The agent must infer the hidden state (wear) from the history of observations and actions, motivating the use of feature extractors and attention mechanisms to capture temporal and cross-sensor dependencies.
+
+\subsection{Observation design: wear is hidden}
+A critical modelling choice is that $w_t$ is \emph{excluded} from observations. The agent must infer maintenance decisions solely from sensors (forces, vibrations, acoustics, currents), which aligns with realistic deployments where true wear is expensive or impossible to measure in real time. Formally, the observation is as above:
+\begin{equation}
+  o_t \equiv \mathbf{x}_t = \mathrm{Sensors}(t),\qquad w_t\notin o_t.
+\end{equation}
+This makes the environment a simple POMDP, not a fully observable MDP. The state is only partially visible, and the agent must learn to extract relevant information from the available sensor data.
 
 \subsection{Episode termination}
 Episodes terminate on (i) action \emph{replace} or (ii) a threshold violation (wear exceeding the wear threshold), or (iii) end-of-file truncation.
@@ -103,13 +111,13 @@ This design encodes an asymmetric risk profile consistent with safety-critical m
 
 \section{Attention mechanisms for predictive maintenance}
 \subsection{Attention in general}
-Attention can be written as a mapping from queries $Q$, keys $K$, and values $V$ to a context representation
+Attention mechanisms allow models to dynamically focus on the most relevant parts of their input. In its general form, attention is a mapping from queries $Q$, keys $K$, and values $V$ to a context representation:
 \begin{equation}
   \mathrm{Att}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V,
 \end{equation}
-popularized by Transformer architectures~\cite{Vaswani2017Attention}. In maintenance, attention is attractive because it can (i) emphasize salient sensors, (ii) highlight interactions among signals, and (iii) provide a structured inductive bias without necessarily increasing end-to-end model complexity dramatically.
+where $d_k$ is the key dimension. This formulation, popularized by Transformer architectures~\cite{Vaswani2017Attention}, enables the model to weigh different input features or time steps according to their relevance.
 
-In this work, attention is implemented as a \emph{feature extractor} $\phi_\theta(\mathbf{x}_t)$ inside the policy/value networks (Stable-Baselines3 custom extractors). This shifts attention from ``sequence-to-sequence'' NLP settings to ``feature weighting/fusion'' over multi-sensor inputs.
+In predictive maintenance, attention is attractive because it can (i) emphasize salient sensors, (ii) highlight interactions among signals, and (iii) provide a structured inductive bias without necessarily increasing end-to-end model complexity dramatically. In this work, attention is implemented as a \emph{feature extractor} $\phi_\theta(\mathbf{x}_t)$ inside the policy/value networks (Stable-Baselines3 custom extractors), shifting attention from ``sequence-to-sequence'' NLP settings to ``feature weighting/fusion'' over multi-sensor inputs.
 
 \subsection{Nadaraya--Watson (NW) attention}
 \paragraph{Theory.}
@@ -160,13 +168,19 @@ MH adds representational capacity with controlled width and can be efficient on 
 
 \subsection{Self-attention (SA)}
 \paragraph{Theory.}
-Self-attention often improves modeling of feature interactions. In Transformers it operates over tokens; here it operates over a projected feature vector.
+Self-attention is a mechanism that allows each feature (or token) to attend to all others, learning dependencies and interactions. In the standard Transformer, self-attention is defined as:
+\begin{equation}
+  \mathrm{SelfAtt}(X) = \mathrm{softmax}\left(\frac{XW_Q (XW_K)^\top}{\sqrt{d_k}}\right) XW_V
+\end{equation}
+where $X \in \mathbb{R}^{n \times d}$ is the input (with $n$ features or tokens), and $W_Q, W_K, W_V$ are learned projection matrices. This computes a weighted sum of value vectors for each feature, with weights determined by the similarity of queries and keys.
+
+In our setting, the input $X$ is a batch of projected sensor feature vectors (not a sequence), so self-attention operates across features or across the batch, depending on implementation. This enables the model to learn complex relationships between sensor channels.
 
 \paragraph{Implementation in AutoRL.}
-The extractor (\texttt{SelfAttentionExtractor}) projects inputs to a feature space and computes $Q,K,V$ with linear layers. It forms a scalar score via a dot product and applies a softmax normalization across the \emph{batch} dimension, then uses residual connections and a feed-forward network with layer normalization.
+The extractor (\texttt{SelfAttentionExtractor}) projects inputs to a feature space and computes $Q,K,V$ with linear layers. It forms a scalar score via a dot product and applies a softmax normalization across the \emph{batch} dimension, then uses residual connections and a feed-forward network with layer normalization. The batchwise normalization acts as a gating mechanism, but is not equivalent to standard token-wise attention.
 
 \paragraph{Pros/cons.}
-This design can act as a batchwise gating mechanism and may stabilize training via normalization and residual structure. However, batchwise normalization is not equivalent to standard token-wise attention and may introduce sensitivity to batch composition.
+This design can stabilize training via normalization and residual structure, and can model feature interactions. However, batchwise normalization may introduce sensitivity to batch composition and is less interpretable than classical temporal self-attention.
 
 \section{RL algorithms studied}
 We compare four standard RL approaches commonly used for control and decision-making.
