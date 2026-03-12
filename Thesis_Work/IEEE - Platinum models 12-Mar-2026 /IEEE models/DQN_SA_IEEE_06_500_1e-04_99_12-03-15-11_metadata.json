@@ -1,0 +1,17 @@
+{
+  "algorithm": "DQN",
+  "attention_mechanism": "SelfAttn",
+  "training_data": "IEEE_06",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "12-03-15-11",
+  "avg_wear_margin": 137.013807096,
+  "avg_reward": -0.3952000141143799,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.42366867391654217,
+  "t_ss": 15.0,
+  "sigma_ss": 0.5198600081069524
+}

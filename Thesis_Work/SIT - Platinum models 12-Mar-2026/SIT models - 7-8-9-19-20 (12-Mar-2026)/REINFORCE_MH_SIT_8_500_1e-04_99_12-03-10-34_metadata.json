@@ -1,0 +1,17 @@
+{
+  "algorithm": "REINFORCE",
+  "attention_mechanism": "MultiHead",
+  "training_data": "SIT_8",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "12-03-10-34",
+  "avg_wear_margin": 245.96517999999995,
+  "avg_reward": -0.38999998569488525,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.3618693171970338,
+  "t_ss": 15.0,
+  "sigma_ss": 0.5629278350515473
+}

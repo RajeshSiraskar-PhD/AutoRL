@@ -1,0 +1,17 @@
+{
+  "algorithm": "A2C",
+  "attention_mechanism": "Temporal",
+  "training_data": "SIT_9",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "12-03-08-48",
+  "avg_wear_margin": 161.95952000000005,
+  "avg_reward": -3.9436025619506836,
+  "avg_violations": 0.21,
+  "avg_replacements": 0.79,
+  "weighted_score": 0.34668837106438244,
+  "t_ss": 15.0,
+  "sigma_ss": 106.44488038621364
+}

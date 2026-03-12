@@ -1,0 +1,17 @@
+{
+  "algorithm": "DQN",
+  "attention_mechanism": "Temporal",
+  "training_data": "SIT_8",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "01-03-20-07",
+  "avg_wear_margin": 245.98999999999995,
+  "avg_reward": -0.40140002965927124,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.3618524148633192,
+  "t_ss": 15.0,
+  "sigma_ss": 8.526512829121202e-14
+}

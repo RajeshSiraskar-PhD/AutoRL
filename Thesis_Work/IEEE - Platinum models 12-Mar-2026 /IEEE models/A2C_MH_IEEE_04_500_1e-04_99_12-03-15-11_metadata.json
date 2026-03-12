@@ -1,0 +1,17 @@
+{
+  "algorithm": "A2C",
+  "attention_mechanism": "MultiHead",
+  "training_data": "IEEE_04",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "12-03-15-11",
+  "avg_wear_margin": 139.64121935799997,
+  "avg_reward": 0.9529995322227478,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.4222342133505848,
+  "t_ss": 15.0,
+  "sigma_ss": 11.090814630339489
+}

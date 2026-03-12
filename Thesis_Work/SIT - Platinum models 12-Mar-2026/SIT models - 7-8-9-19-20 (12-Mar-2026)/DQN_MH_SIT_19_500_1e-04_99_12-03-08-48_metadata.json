@@ -1,0 +1,17 @@
+{
+  "algorithm": "DQN",
+  "attention_mechanism": "MultiHead",
+  "training_data": "SIT_19",
+  "learning_rate": 0.0001,
+  "gamma": 0.99,
+  "episodes": 500,
+  "finite_horizon": true,
+  "training_date": "12-03-08-48",
+  "avg_wear_margin": 243.07000000000002,
+  "avg_reward": -0.3959999978542328,
+  "avg_violations": 0.0,
+  "avg_replacements": 1.0,
+  "weighted_score": 0.36225830503667555,
+  "t_ss": 15.0,
+  "sigma_ss": 2.842170943040401e-14
+}

@@ -22,7 +22,6 @@ test*
 Evaluation_Results*
 checkpoint*
 .DS_*
-Thesis_Work*
 *.aux
 *.log
 *.out
