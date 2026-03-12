@@ -1,23 +1,27 @@
 # Thesis Notes on Approach
-## 08-Mar-2026
-------------------------------------------------------------------
+## Updated: 13-Mar-2026
+---------------------------------------------------------------------------------
+Working notes
+- SIT and IEEE "multiple" rounds and results - Show as multiple training rounds
+- 
 
+
+
+---------------------------------------------------------------------------------
 Theme: REINFORCE is computationally lighther than A2C, DQN and PPO > citations
 
-Two hypothesis being studied
+Three hypothesis being studied
 
 1. Hypothesis 1: 
    - Can REINFORCE be equal to or better than advanced models? 
 2. Hypotthesis 2:
    - If not better then can it be made better using Attention Mechanism
+3. Hypothesis 3:
+   - Same reward fn and env design can support different schemas - IEEE and SIT
 
-3. Results classifications:
+4. Results classifications:
    - Models by training file: Where it beats advanced models
    - When combined with Attention - it beats advanced moedls
-
-4. Hypothesis 3:
-   - Same reward fn and env design can support different schemas 
-   - IEEE and SIT
 
 5. Background
    - Citations / references stating simplicity of REINFORCE

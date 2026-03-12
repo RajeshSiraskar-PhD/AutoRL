@@ -29,3 +29,10 @@ Thesis_Work*
 *.fdb_latexmk
 *.fls
 *.pdf
+*.sh
+utilities/AnalyzeModels_R1-Safe_Results.ipynb
+utilities/AnalyzeModels_R2.ipynb
+utilities/AnalyzeModels_SIT_ANALYSIS.ipynb
+utilities/AnalyzeModels_SIT_with_AM.ipynb
+train_agent_safe_10-Mar-2026.py
+

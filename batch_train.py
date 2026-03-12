@@ -45,11 +45,12 @@ print('- Loaded.\n - Starting AutoRL CLI Pipeline ...\n')
 # timestamp_fmt = "%Y%m%d_%H%M%S"
 timestamp_fmt = "%b-%d_%H%M%S"
 BATCH_TRAIN = 3 # Number of training models to train before running analysis and picking next batch (if -B N specified)
-EVAL_ROUNDS = 1  # Default 20 - Number of evaluation rounds for multi-round evaluation (if -V N specified)
+EVAL_ROUNDS = 20  # Default 20 - Number of evaluation rounds for multi-round evaluation (if -V N specified)
 INDIVDUAL_PLOTS = False
+PDF_REPORTS = True
 
 # Checkpoint Model Evaluation - recovery from failuer - Maximum retries
-RETRY_EVAL = 1 # default 10
+RETRY_EVAL = 10 # default 10
 CHECKPOINT_DB = "checkpoint.db"
 
 def init_checkpoint_db():
@@ -1270,6 +1271,10 @@ def create_heatmaps(results_df: pd.DataFrame, schema: str, attention_mech: int, 
     filepath = os.path.join(results_dir, filename)
     
     fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    if PDF_REPORTS:
+        pdf_path = filepath.replace('.png', '.pdf')
+        fig.savefig(pdf_path, bbox_inches='tight')
+        print(f"  ✓ Heatmap PDF saved: {pdf_path}")
     plt.close(fig)
     
 
@@ -1469,6 +1474,10 @@ def generate_analysis_report(results_df: pd.DataFrame, schema: str, attention_me
     try:
         plt.savefig(filepath, dpi=150, bbox_inches='tight')
         print(f"✓ Analysis report saved: {filepath}")
+        if PDF_REPORTS:
+            pdf_path = filepath.replace('.png', '.pdf')
+            plt.savefig(pdf_path, bbox_inches='tight')
+            print(f"  ✓ Analysis report PDF saved: {pdf_path}")
     except Exception as e:
         print(f"  [!] Failed to save report: {e}")
     finally:
@@ -1889,6 +1898,10 @@ def generate_statistical_analysis(results_df: pd.DataFrame, schema: str, attenti
             plt.savefig(filepath, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
             print(f"  ✓ Statistical analysis saved: {filepath}")
             saved_paths.append(filepath)
+            if PDF_REPORTS:
+                pdf_path = filepath.replace('.png', '.pdf')
+                plt.savefig(pdf_path, bbox_inches='tight', facecolor=fig.get_facecolor())
+                print(f"  ✓ Statistical analysis PDF saved: {pdf_path}")
         except Exception as e:
             print(f"  [!] Failed to save {filename}: {e}")
         finally:
@@ -1945,14 +1958,14 @@ Examples:
     parser.add_argument(
         '-LR', '--learning-rates',
         type=str,
-        default=None,
-        help="Comma-separated learning rate values for grid search (e.g., '0.001,0.0001,0.0005'). Default: 0.001"
+        default='0.0001',
+        help="Comma-separated learning rate values for grid search (e.g., '0.001,0.0001,0.0005'). Default: 0.0001"
     )
     
     parser.add_argument(
         '-G', '--gamma',
         type=str,
-        default=None,
+        default='0.99',
         help="Comma-separated gamma values for grid search (e.g., '0.95,0.99'). Default: 0.99"
     )
     
