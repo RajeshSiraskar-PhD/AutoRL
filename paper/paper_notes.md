@@ -3,9 +3,13 @@
 ------------------------------------------------------------
 
 ### Results folder : 
-- paper\SIT_Results
+- figures\SIT_Results and figures\IEEE_Results 
+
+SIT_Results folder contains evaluation results of 7 models trained (trained over two rounds of training) on 7 SIT data sets, and each trained model is then evaluated on 14 unseen dataset  
 - Set-1: SIT training file 15-17-19
 - Set-2: SIT training file 7-8-9-19-20
+
+Similarly IEEE_Results folder contains eval results on 5 trained models, each evaluated on the other 4 unseen datasets   
 
 ## Hypothesis
 1. Primary hypothesis: The computationally light REINFORCE algo performs better than more advanced A2C, DQN and PPO
