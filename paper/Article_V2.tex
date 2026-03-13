@@ -8,8 +8,12 @@
 \usepackage{booktabs}
 \usepackage{siunitx}
 \usepackage{graphicx}
+\graphicspath{{figures/}{paper/figures/}}
 \usepackage{hyperref}
 \usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage[style=apa,backend=biber,sorting=nyt]{biblatex}
+\DeclareLanguageMapping{american}{american-apa}
+\addbibresource{references.bib}
 
 \hypersetup{
   colorlinks=true,
@@ -22,11 +26,11 @@
 
 \author{Rajesh Siraskar\\
 \small PhD Researcher, Predictive Maintenance and Reinforcement Learning\\
-\small (Affiliation as appropriate)\\
-\small \texttt{(email as appropriate)}
+\small (SCRI SIT Pune)\\
+\small \texttt{(email)}
 }
 
-\date{March 2026}
+\date{\today}
 
 \begin{document}
 \maketitle
@@ -263,8 +267,8 @@ We train $3\times 4\times 4 = 48$ agents: algorithms \{\textsc{A2C}, \textsc{DQN
 Each model--test-file pair is evaluated for 20 rounds. The long-form results CSV is retained for statistical analysis; plots and heatmaps use round means. The primary analysis artifacts used in this paper are:
 \begin{itemize}
   \item \texttt{results/Analysis/01-Mar-2026 Good Set-1/Evaluation\_Results\_Multiround\_SIT\_NoAM\_20260301\_181435.csv},
-  \item \texttt{paper/figures/analysis\_report\_sit.png},
-  \item \texttt{paper/figures/heatmap\_allagents\_sit.png}.
+  \item \texttt{figures/analysis\_report\_sit.png},
+  \item \texttt{figures/heatmap\_allagents\_sit.png}.
 \end{itemize}
 
 \section{Results}
@@ -322,92 +326,18 @@ This manuscript is based on the accompanying AutoRL codebase (\texttt{train\_age
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{paper/figures/analysis_report_sit.png}
+\includegraphics[width=\linewidth]{analysis_report_sit.png}
 \caption{AutoRL evaluation analysis report (SIT schema). Panels summarize (A) mean evaluation score across algorithms and attention mechanisms, (B) grouped comparisons, (C) algorithm-level means with confidence intervals, and (D) the $\lambda$ metric.}
 \label{fig:analysisreport}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{paper/figures/heatmap_allagents_sit.png}
+\includegraphics[width=\linewidth]{heatmap_allagents_sit.png}
 \caption{Heatmap of evaluation scores across trained agent configurations (SIT schema). Each row corresponds to an RL model variant; columns are test files. The best-performing region corresponds to \textsc{REINFORCE} with multi-head or temporal attention.}
 \label{fig:heatmap}
 \end{figure}
 
-\begin{thebibliography}{99}
-
-\bibitem{SuttonBarto2018}
-R.~S. Sutton and A.~G. Barto.
-\newblock \emph{Reinforcement Learning: An Introduction}.
-\newblock MIT Press, 2nd edition, 2018.
-
-\bibitem{Williams1992REINFORCE}
-R.~J. Williams.
-\newblock Simple statistical gradient-following algorithms for connectionist reinforcement learning.
-\newblock \emph{Machine Learning}, 8:229--256, 1992.
-
-\bibitem{Mnih2015DQN}
-V.~Mnih et~al.
-\newblock Human-level control through deep reinforcement learning.
-\newblock \emph{Nature}, 518:529--533, 2015.
-
-\bibitem{Mnih2016A3C}
-V.~Mnih et~al.
-\newblock Asynchronous methods for deep reinforcement learning.
-\newblock \emph{Proceedings of ICML}, 2016.
-
-\bibitem{Schulman2017PPO}
-J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov.
-\newblock Proximal policy optimization algorithms.
-\newblock \emph{arXiv:1707.06347}, 2017.
-
-\bibitem{Vaswani2017Attention}
-A.~Vaswani et~al.
-\newblock Attention is all you need.
-\newblock \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2017.
-
-\bibitem{Nadaraya1964}
-E.~A. Nadaraya.
-\newblock On estimating regression.
-\newblock \emph{Theory of Probability and Its Applications}, 9(1):141--142, 1964.
-
-\bibitem{Watson1964}
-G.~S. Watson.
-\newblock Smooth regression analysis.
-\newblock \emph{Sankhy\={a}: The Indian Journal of Statistics, Series A}, pages 359--372, 1964.
-
-\bibitem{Schwartz2020GreenAI}
-R.~Schwartz, J.~Dodge, N.~A. Smith, and O.~Etzioni.
-\newblock Green {AI}.
-\newblock \emph{Communications of the ACM}, 63(12):54--63, 2020.
-
-\bibitem{Strubell2019Energy}
-E.~Strubell, A.~Ganesh, and A.~McCallum.
-\newblock Energy and policy considerations for deep learning in {NLP}.
-\newblock \emph{Proceedings of ACL}, 2019.
-
-\bibitem{Siraskar2025NaiveREINFORCE}
-R.~Siraskar.
-\newblock An empirical study of the na\"{i}ve {REINFORCE} algorithm for predictive maintenance.
-\newblock \emph{Discover Applied Sciences}, 2025.
-\newblock DOI: \href{https://doi.org/10.1007/s42452-025-06613-1}{10.1007/s42452-025-06613-1}.
-
-\bibitem{Siraskar2024NWAttention}
-R.~Siraskar, S.~Kumar, S.~Patil, A.~Bongale, and K.~Kotecha.
-\newblock Application of the {Nadaraya--Watson} estimator based attention mechanism to the field of predictive maintenance.
-\newblock \emph{MethodsX}, 12:102754, 2024.
-\newblock DOI: \href{https://doi.org/10.1016/j.mex.2024.102754}{10.1016/j.mex.2024.102754}.
-
-\bibitem{RLforPdMReview2023}
-Reinforcement learning for predictive maintenance: a systematic technical review.
-\newblock \emph{Artificial Intelligence Review}, 2023.
-\newblock DOI: \href{https://doi.org/10.1007/s10462-023-10468-6}{10.1007/s10462-023-10468-6}.
-
-\bibitem{Raffin2021SB3}
-A.~Raffin et~al.
-\newblock Stable-baselines3: Reliable reinforcement learning implementations.
-\newblock \emph{Journal of Machine Learning Research}, 22(268):1--8, 2021.
-
-\end{thebibliography}
+\printbibliography[title={References}]
 
 \end{document}

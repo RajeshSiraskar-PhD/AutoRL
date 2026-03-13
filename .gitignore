@@ -8,6 +8,8 @@
 /models
 /temp
 /results
+/paper/figures
+/paper/figures*
 temp/
 /.streamlit
 /code-storage
