@@ -1,0 +1,261 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{graphicx}
+\usepackage[round,authoryear]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\title{AutoRL for Predictive Maintenance on the Edge:\\
+REINFORCE with Attention Mechanisms for Milling Tool Replacement}
+\author{\textit{Author names omitted for review}}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Industry~4.0 predictive maintenance (PdM) increasingly runs near machines, where edge constraints on memory, latency, and energy favor compact learning pipelines. This work presents and analyzes an implemented AutoRL pipeline for milling-tool replacement, comparing \textsc{REINFORCE} with \textsc{A2C}, \textsc{DQN}, and \textsc{PPO} under four attention-based feature extractors (Nadaraya--Watson, Temporal, Multi-Head, and Self-Attention). The implementation is grounded in the accompanying codebase (\texttt{rl\_pdm.py}, \texttt{train\_agent.py}): hidden-wear observations, a safety-asymmetric reward function, algorithm-attention sweeps, metadata tracking, and multi-round evaluation with a prognostic $\lambda$ metric. Across 48 trained agents (3 training files $\times$ 4 algorithms $\times$ 4 attentions), evaluated on six unseen datasets over 20 rounds, \textsc{REINFORCE} with temporal or multi-head attention achieves top aggregate performance and statistically outperforms non-\textsc{REINFORCE} baselines on evaluation-score distributions (one-tailed Welch test, $p \ll 0.05$). Results indicate that lightweight policy-gradient learning, when combined with suitable representation bias, can match or exceed heavier optimizers while aligning with edge and sustainability objectives.
+\end{abstract}
+
+\textbf{Keywords:} Predictive maintenance; Industry~4.0; Edge computing; AutoRL; \textsc{REINFORCE}; \textsc{PPO}; Attention mechanisms; Sustainable AI.
+
+\section{Context and Motivation}
+Predictive maintenance is a core Industry~4.0 capability where machine telemetry is used to schedule interventions before quality loss or failure. Recent reviews emphasize that PdM deployments must balance prediction quality, downtime, and operational constraints \citep{Zonta2020PdMReview,Siraskar2023RLReview}. In industrial environments, edge-centric deployment is often required for low-latency decisions and resilience to network limitations \citep{EdgeIndustrialInternet2021,EdgeComputingIndustrialMachines2019}.
+
+These practical constraints motivate algorithmic efficiency: lower model complexity and fewer optimization passes can reduce training/inference energy and carbon footprint \citep{Strubell2019EnergyPolicy,Patterson2021Carbon,Schwartz2020GreenAI}. This is directly relevant for AutoRL workflows, where many candidate agents are trained and evaluated.
+
+The central question in this manuscript is therefore implementation-oriented: \emph{can a comparatively simple policy-gradient method, \textsc{REINFORCE}, remain competitive against stronger baselines for PdM when combined with attention-based feature extraction?}
+
+\section{AutoRL Pipeline Overview}
+The implemented AutoRL workflow automates training, model discovery, and evaluation across algorithms and attention mechanisms. In the provided pipeline:
+\begin{itemize}
+  \item training is launched via the CLI (\texttt{train\_agent.py}) over algorithm-attention combinations,
+  \item each trained model stores metadata (algorithm, attention, learning rate, discount factor, episodes),
+  \item evaluation can be single-round or multi-round (20 rounds used here), and
+  \item aggregate analytics include heatmaps, grouped comparisons, and statistical testing.
+\end{itemize}
+This structure follows the broader AutoRL objective of reducing manual tuning burden and improving experimental reproducibility \citep{Faust2019EvolvingRewards,ARLO2023}.
+
+\section{Problem Formulation: MDP vs POMDP}
+The maintenance decision process is formulated as an episodic control problem with action space
+\begin{equation}
+\mathcal{A}=\{0,1\},\quad 0=\text{replace},\; 1=\text{continue}.
+\end{equation}
+The optimization objective is standard discounted return maximization \citep{SuttonBarto2018}:
+\begin{equation}
+J(\theta)=\mathbb{E}_{\pi_\theta}\!\left[\sum_{t=0}^{T}\gamma^t r_t\right].
+\end{equation}
+
+Although often described using MDP notation, the implemented environment is more precisely a POMDP: true wear is latent to the policy, while observations are sensor-only vectors. In code, \texttt{MT\_Env} excludes \texttt{tool\_wear}, time, and label/action columns from observations, forcing inference from multi-sensor data.
+
+\subsection{Reward and Termination (Code-Faithful)}
+With wear threshold $W$, wear ratio $\rho_t=w_t/W$, and constants $(R_1,R_2,R_3,R_4)$ from \texttt{rl\_pdm.py}, the implemented reward is:
+\begin{align}
+r_t=
+\begin{cases}
+R_3 + R_4 & a_t=0,\; w_t\le W,\; \rho_t>0.9 \\
+R_3 + 0.6R_4 & a_t=0,\; w_t\le W,\; 0.8<\rho_t\le0.9 \\
+R_3 + 0.3R_4 & a_t=0,\; w_t\le W,\; 0.7<\rho_t\le0.8 \\
+R_3 & a_t=0,\; w_t\le W,\; \rho_t\le0.7 \\
+0.5R_2 & a_t=0,\; w_t>W \\
+R_2 & a_t=1,\; w_t>W \\
+R_1 & a_t=1,\; w_t\le W.
+\end{cases}
+\end{align}
+Episodes terminate on replacement, threshold violation, or end-of-file truncation. This creates a safety-asymmetric objective where violations are much worse than early-but-safe replacement.
+
+\section{Attention Mechanisms for Sensor Representation}
+Attention is used here as a feature-extractor layer within RL policy/value networks, rather than as sequence-to-sequence modeling. The general mechanism follows \citet{Vaswani2017Attention}:
+\begin{equation}
+\mathrm{Att}(Q,K,V)=\mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V.
+\end{equation}
+
+\subsection{Nadaraya--Watson (NW)}
+NW attention uses kernel-weighted prototype aggregation \citep{Nadaraya1964,Watson1964}. In implementation, a learnable query projection, learnable keys/values, and positive bandwidth $\beta$ produce
+\begin{equation}
+\alpha_i=\mathrm{softmax}\left(-\beta\lVert q-k_i\rVert_2^2\right),\qquad
+c=\sum_i \alpha_i v_i.
+\end{equation}
+Its primary advantage is low computational overhead, consistent with edge-oriented PdM findings \citep{Siraskar2024NWAttention}.
+
+\subsection{Temporal (TP)}
+Temporal attention in the implemented extractor uses a finite recent history buffer to preserve short-term dynamics across sensor vectors. A learned scorer computes relevance over buffered steps and forms a context vector fused with current features. This is intentionally compact compared with recurrent or full transformer stacks.
+
+\subsection{Multi-Head (MH)}
+The Multi-Head extractor projects features into multiple subspaces, applies per-head attention, and recombines outputs. This encourages learning heterogeneous cross-sensor relationships \citep{Vaswani2017Attention} while keeping the overall architecture moderate in size.
+
+\subsection{Self-Attention (SA)}
+The Self-Attention extractor provides compact Q/K/V-style interaction over fixed-dimensional observations, with residual and normalization operations for stability. It is more expressive than simple MLP-style extraction but generally heavier than NW/TP.
+
+\section{RL Algorithms Studied}
+The study compares \textsc{DQN} \citep{Mnih2015DQN}, \textsc{A2C} \citep{Mnih2016A3C}, \textsc{PPO} \citep{Schulman2017PPO}, and \textsc{REINFORCE} \citep{Williams1992REINFORCE}.
+
+The custom \textsc{REINFORCE} implementation in \texttt{rl\_pdm.py} is built on Stable-Baselines3 on-policy scaffolding and supports an optional value-function baseline (enabled by default) for variance reduction:
+\begin{equation}
+\nabla_\theta J(\theta)\propto
+\sum_t \nabla_\theta\log\pi_\theta(a_t|s_t)\,(G_t-b_t),
+\end{equation}
+with $b_t=V_\phi(s_t)$ when baseline is used. This detail is important: the implementation is not a strictly baseline-free textbook variant, and this likely contributes to training stability.
+
+\section{Design and Implementation}
+\subsection{Environment and Data Interface}
+\begin{itemize}
+  \item \textbf{Schema-aware features:} \texttt{MT\_Env} detects IEEE/SIT schemas and selects sensor columns accordingly.
+  \item \textbf{Hidden wear:} \texttt{tool\_wear} is excluded from observations to enforce inference from sensors.
+  \item \textbf{Binary action protocol:} replacement immediately terminates an episode; continuing can trigger catastrophic violation if threshold is crossed.
+\end{itemize}
+
+\subsection{Training Orchestration}
+\begin{itemize}
+  \item \textbf{Grided sweeps:} \texttt{train\_agent.py} supports algorithm, attention, learning-rate, and gamma combinations.
+  \item \textbf{Attention mapping:} CLI shortcuts map to implemented extractor types (NW/TP/MH/SA).
+  \item \textbf{Metadata persistence:} each agent writes JSON metadata for downstream analysis and reproducibility.
+\end{itemize}
+
+\subsection{Evaluation and Scoring}
+Evaluation outputs include replacement timing, tool-use percentage, violation statistics, and a prognostic timing metric ($\lambda$) derived from first replacement relative to threshold crossing logic. A weighted evaluation score is computed in \texttt{train\_agent.py} as:
+\begin{equation}
+\text{EvalScore} = 0.35\cdot \text{ToolUseNorm} + 0.35\cdot (1-\text{ViolNorm}) + 0.30\cdot \Lambda_{\text{norm}},
+\end{equation}
+where $\Lambda_{\text{norm}}$ penalizes large $|\lambda|$. Multi-round runs (20 rounds) provide distributions suitable for inferential testing.
+
+\section{Experimental Setup}
+The reported setup trains 48 agents ($3\times4\times4$) and tests each across six unseen files for 20 rounds. This protocol emphasizes cross-file generalization and robustness to stochasticity. Aggregate comparisons use means, confidence intervals, and one-tailed Welch tests between \textsc{REINFORCE} and pooled non-\textsc{REINFORCE} baselines.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{__Analysis_Report_SIT.png}
+\caption{Aggregate analysis report used in the AutoRL comparison pipeline.}
+\label{fig:analysisreport}
+\end{figure}
+
+\section{Results and Critical Consistency Check}
+Results consistently place \textsc{REINFORCE} with TP/MH among top configurations, with high tool-use, low violation tendency, and favorable $\lambda$. The observed significance (very small $p$-values) supports a distributional advantage in this experimental setting.
+
+From a factual review perspective, four points are critical and now aligned to code behavior:
+\begin{itemize}
+  \item the environment is partially observable (wear hidden),
+  \item rewards are threshold-ratio-stepped for replacement timing,
+  \item \textsc{REINFORCE} uses an optional baseline (enabled by default), and
+  \item evaluation uses a weighted composite rather than raw return alone.
+\end{itemize}
+
+These points are central to interpreting why a lightweight optimizer can perform strongly: representation bias and evaluation definition both materially influence ranking.
+
+\section{Discussion}
+The main implication is not that \textsc{REINFORCE} is universally superior, but that in this PdM regime (binary action space, strong safety asymmetry, hidden-wear inference), simple policy-gradient updates coupled with appropriate feature extraction can be highly competitive. In AutoRL practice, this is valuable because cheaper algorithms scale better over broad sweep spaces.
+
+This also aligns with Green-AI recommendations to account for computational cost as a first-class concern \citep{Schwartz2020GreenAI,Strubell2019EnergyPolicy}. For edge PdM, the policy class and feature extractor together should be chosen as a compute-performance pair, not independently.
+
+\section{Limitations and Future Work}
+Future work should include direct deployment metrics (latency, memory, device-level energy), improved temporal-state reset control for attention buffers at episode boundaries, and robustness tests under sensor drift/domain shift across machines.
+
+\section{Conclusion}
+This manuscript integrates implementation-faithful details of the AutoRL codebase with broader scientific context. The combined evidence supports \textsc{REINFORCE}+attention as an effective and resource-aware strategy for edge-oriented milling-tool PdM, while highlighting that evaluation design and representation choices are decisive factors in practical performance.
+
+\section*{Code and Data Availability}
+The study is based on the accompanying code and artifacts: \texttt{rl\_pdm.py}, \texttt{train\_agent.py}, and generated evaluation reports.
+
+\begin{thebibliography}{99}
+
+\bibitem[ARLO Team(2023)]{ARLO2023}
+M. Mussi, D. Lombarda, A. M. Metelli, F. Trov\`o, and M. Restelli.
+ARLO: A framework for automated reinforcement learning.
+\emph{Expert Systems with Applications}, 224:119883, 2023.
+
+\bibitem[Carvalho et~al.(2019)]{EdgeComputingIndustrialMachines2019}
+A. Carvalho, N. O' Mahony, L. Krpalkova, S. Campbell, J. Walsh, and P. Doody.
+Edge computing applied to industrial machines.
+\emph{Procedia Manufacturing}, 38:178--185, 2019.
+
+\bibitem[Faust et~al.(2019)]{Faust2019EvolvingRewards}
+A. Faust, A. Francis, and D. Mehta.
+Evolving rewards to automate reinforcement learning.
+\emph{AutoML@ICML}, 2019.
+
+\bibitem[Mnih et~al.(2015)]{Mnih2015DQN}
+V. Mnih et~al.
+Human-level control through deep reinforcement learning.
+\emph{Nature}, 518:529--533, 2015.
+
+\bibitem[Mnih et~al.(2016)]{Mnih2016A3C}
+V. Mnih et~al.
+Asynchronous methods for deep reinforcement learning.
+\emph{Proceedings of ICML}, 2016.
+
+\bibitem[Nadaraya(1964)]{Nadaraya1964}
+E. A. Nadaraya.
+On estimating regression.
+\emph{Theory of Probability and Its Applications}, 9(1):141--142, 1964.
+
+\bibitem[Patterson et~al.(2021)]{Patterson2021Carbon}
+D. Patterson, J. Gonzalez, Q. V. Le, et~al.
+Carbon emissions and large neural network training.
+\emph{arXiv:2104.10350}, 2021.
+
+\bibitem[Schulman et~al.(2017)]{Schulman2017PPO}
+J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov.
+Proximal policy optimization algorithms.
+\emph{arXiv:1707.06347}, 2017.
+
+\bibitem[Schwartz et~al.(2020)]{Schwartz2020GreenAI}
+R. Schwartz, J. Dodge, N. A. Smith, and O. Etzioni.
+Green AI.
+\emph{Communications of the ACM}, 63(12):54--63, 2020.
+
+\bibitem[Siraskar(2025)]{Siraskar2025NaiveREINFORCE}
+R. Siraskar.
+An empirical study of the na\"{i}ve REINFORCE algorithm for predictive maintenance.
+\emph{Discover Applied Sciences}, 2025.
+
+\bibitem[Siraskar et~al.(2023)]{Siraskar2023RLReview}
+R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha.
+Reinforcement learning for predictive maintenance: a systematic technical review.
+\emph{Artificial Intelligence Review}, 2023.
+
+\bibitem[Siraskar et~al.(2024)]{Siraskar2024NWAttention}
+R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha.
+Application of the Nadaraya--Watson estimator based attention mechanism to predictive maintenance.
+\emph{MethodsX}, 12:102754, 2024.
+
+\bibitem[Strubell et~al.(2019)]{Strubell2019EnergyPolicy}
+E. Strubell, A. Ganesh, and A. McCallum.
+Energy and policy considerations for deep learning in NLP.
+\emph{Proceedings of ACL}, 2019.
+
+\bibitem[Sutton and Barto(2018)]{SuttonBarto2018}
+R. S. Sutton and A. G. Barto.
+\emph{Reinforcement Learning: An Introduction}.
+MIT Press, 2nd edition, 2018.
+
+\bibitem[Vaswani et~al.(2017)]{Vaswani2017Attention}
+A. Vaswani et~al.
+Attention is all you need.
+\emph{Advances in Neural Information Processing Systems}, 2017.
+
+\bibitem[Watson(1964)]{Watson1964}
+G. S. Watson.
+Smooth regression analysis.
+\emph{Sankhy\={a}: The Indian Journal of Statistics, Series A}, 1964.
+
+\bibitem[Williams(1992)]{Williams1992REINFORCE}
+R. J. Williams.
+Simple statistical gradient-following algorithms for connectionist reinforcement learning.
+\emph{Machine Learning}, 8:229--256, 1992.
+
+\bibitem[Zhang et~al.(2021)]{EdgeIndustrialInternet2021}
+T. Zhang, Y. Li, and C. L. P. Chen.
+Edge computing and its role in Industrial Internet: methodologies, applications, and future directions.
+\emph{Information Sciences}, 557:34--65, 2021.
+
+\bibitem[Zonta et~al.(2020)]{Zonta2020PdMReview}
+T. Zonta et~al.
+Predictive maintenance in Industry 4.0: a systematic literature review.
+\emph{Computers \& Industrial Engineering}, 150:106889, 2020.
+
+\end{thebibliography}
+
+\end{document}

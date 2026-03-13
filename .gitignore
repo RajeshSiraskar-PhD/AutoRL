@@ -1,7 +1,6 @@
 # 06-Feb-2026: First commit
 
 /.vscode*
-/paper*
 /__pycache__
 /lab
 /storage

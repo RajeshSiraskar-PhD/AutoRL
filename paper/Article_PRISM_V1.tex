@@ -1,0 +1,422 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\title{AutoRL for Predictive Maintenance of a Milling Machine:\\
+REINFORCE with Lightweight Attention at the Edge}
+\author{\textit{Author names omitted for review}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Industry 4.0 manufacturing increasingly relies on predictive maintenance (PdM) to reduce unplanned downtime while preserving tool life. However, edge deployments constrain compute, energy, and model size. This paper studies an AutoRL pipeline for PdM of a milling machine, comparing a lightweight REINFORCE agent against advanced baselines (A2C, DQN, PPO) across multiple attention mechanisms. We integrate four attention variants---Nadaraya--Watson (NW), Temporal (TP), Multi-Head (MH), and Self-Attention (SA)---to improve state representation while keeping inference inexpensive. Forty-eight models (3 training files $\times$ 4 algorithms $\times$ 4 attention mechanisms) are trained and evaluated on six unseen files with 20 test rounds. Results show that REINFORCE achieves the best overall evaluation score and tool-use percentage and the lowest prognostic $\Lambda$ metric, with hypothesis testing at $\alpha=0.05$ indicating statistically significant superiority over A2C, DQN, and PPO. We conclude that REINFORCE, when paired with lightweight attention, is a strong candidate for edge-first PdM and argue that AutoRL can democratize RL adoption in industry by reducing manual tuning.
+\end{abstract}
+
+\textbf{Keywords:} predictive maintenance, reinforcement learning, REINFORCE, AutoRL, attention mechanism, edge computing, Industry 4.0
+
+\section{Introduction and Context}
+Industry 4.0 blends cyber-physical systems, IIoT sensing, and data-driven control to maximize uptime and quality. Predictive maintenance (PdM) is central to this vision because it anticipates failures and schedules interventions before costly downtime occurs. Systematic reviews highlight PdM as a core Industry 4.0 capability and emphasize its multidisciplinary nature and need for robust decision-making under uncertainty. \cite{Zonta2020PdMReview}
+
+Edge computing is increasingly adopted in industrial settings to reduce latency, bandwidth requirements, and reliance on cloud connectivity. Survey and review work in industrial internet and edge architectures show that pushing computation closer to machines enables timely decisions and addresses resource constraints in industrial environments. \cite{EdgeIndustrialInternet2021,EdgeComputingIndustrialMachines2019}
+
+Alongside latency, energy and carbon footprint are now relevant engineering considerations. Empirical studies on training large models show substantial energy use and CO$_2$ emissions, motivating efficient algorithms and reporting practices. \cite{Strubell2019EnergyPolicy,Patterson2021Carbon} In industrial AI, lighter models reduce training cost and edge-device power draw, which can translate into smaller carbon footprints and improved eligibility for carbon-reduction accounting or credits where applicable.
+
+\section{Related Work}
+\subsection{Predictive Maintenance with RL}
+RL offers a closed-loop decision framework for PdM, balancing early replacements against tool life and product quality. A systematic technical review catalogs the diversity of RL formulations in PdM and highlights the need for domain-appropriate evaluation metrics. \cite{Siraskar2023RLReview}
+
+\subsection{AutoRL}
+Automated RL (AutoRL) aims to reduce the expert burden of reward shaping, algorithm selection, and hyperparameter tuning. AutoRL has been applied to reward automation, demonstrating improved performance through automated search. \cite{Faust2019EvolvingRewards} Recent frameworks formalize AutoRL pipelines and emphasize reproducibility and standardized components, creating a foundation for industrial adoption. \cite{ARLO2023}
+
+\subsection{Attention Mechanisms}
+Attention mechanisms allocate weight to informative parts of an input sequence, improving signal focus and interpretability. The transformer established the general utility of self-attention and multi-head attention for sequence modeling. \cite{Vaswani2017Attention}
+
+\subsection{Attention for Predictive Maintenance}
+For PdM, attention can focus on wear trajectory segments that are most predictive of impending failure. A lightweight Nadaraya--Watson (NW) attention mechanism has been proposed for milling tool wear, explicitly motivated by edge constraints. \cite{Siraskar2024NW} This work is a direct precursor to the present study and motivates lightweight attention variants that do not rely on heavy deep-learning stacks.
+
+\section{Problem Formulation}
+We model milling tool replacement as an episodic Markov Decision Process (MDP) with state $s_t$ derived from tool-wear time series and attention-augmented features, action $a_t \in \{\text{continue},\text{replace}\}$, and reward $r_t$ balancing quality and downtime. The objective is to maximize the expected discounted return:
+\begin{equation}
+J(\theta) = \mathbb{E}_{\pi_\theta}\left[\sum_{t=0}^{T} \gamma^t r_t\right],
+\end{equation}
+where $\pi_\theta$ is the policy parameterized by $\theta$ and $\gamma$ is the discount factor.
+
+\section{Reinforcement Learning Algorithms}
+\subsection{REINFORCE}
+REINFORCE is a Monte Carlo policy-gradient method with update:
+\begin{equation}
+\nabla_\theta J(\theta) \approx \frac{1}{N} \sum_{n=1}^{N} \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t^n \mid s_t^n)\, G_t^n.
+\end{equation}
+REINFORCE is simple and unbiased but can exhibit high variance. \cite{Williams1992}
+
+\subsection{A2C (Advantage Actor-Critic)}
+A2C uses an advantage estimate $A_t = R_t - V_\phi(s_t)$ to reduce variance:
+\begin{equation}
+\nabla_\theta J(\theta) \approx \mathbb{E}[\nabla_\theta \log \pi_\theta(a_t|s_t) A_t].
+\end{equation}
+A2C is a synchronous variant of A3C and is widely used for stability and sample efficiency. \cite{Mnih2016A3C}
+
+\subsection{DQN}
+DQN is an off-policy value-based method that approximates the Q-function. The TD loss is
+\begin{equation}
+\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s')}\Big[\big(r + \gamma \max_{a'} Q_{\theta^-}(s',a') - Q_\theta(s,a)\big)^2\Big].
+\end{equation}
+DQN demonstrated strong results on Atari domains. \cite{Mnih2015DQN}
+
+\subsection{PPO}
+PPO optimizes a clipped surrogate objective:
+\begin{equation}
+\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\left(r_t(\theta)A_t,\, \text{clip}(r_t(\theta),1-\epsilon,1+\epsilon)A_t\right)\right],
+\end{equation}
+with $r_t(\theta)=\pi_\theta(a_t|s_t)/\pi_{\theta_{old}}(a_t|s_t)$ for stable updates. \cite{Schulman2017PPO}
+
+\section{Why REINFORCE for Edge PdM?}
+REINFORCE is computationally simple, requires no critic network, and can be implemented with modest memory footprints. Prior work on PdM for milling tools shows that untuned REINFORCE can perform competitively against advanced algorithms under AutoRL-style comparisons. \cite{Siraskar2025REINFORCE} In edge contexts, the reduced architectural complexity and smaller training requirements can lower energy use, aligning with sustainability objectives. \cite{Strubell2019EnergyPolicy,Patterson2021Carbon}
+
+\section{Attention Mechanisms Considered}
+This study integrates four attention extractors implemented in \texttt{rl\_pdm.py} as lightweight feature encoders. Each extractor maps the raw observation vector $x_t \in \mathbb{R}^{d}$ to a compact feature $z_t \in \mathbb{R}^{k}$ that is consumed by the RL policy. The design is intentionally minimal to fit edge constraints while still focusing the policy on the most relevant wear dynamics.
+
+\subsection{NW (Nadaraya--Watson) Attention}
+\textbf{Theory.} Nadaraya--Watson attention is a kernel regression estimator that produces a context vector as a convex combination of learned prototypes:
+\begin{equation}
+z_t = \sum_{i=1}^{M} \alpha_i(x_t)\, v_i, \quad
+\alpha_i(x_t) = \frac{\exp(-\beta \lVert x_t - k_i\rVert^2)}{\sum_{j=1}^{M} \exp(-\beta \lVert x_t - k_j\rVert^2)},
+\end{equation}
+where $k_i$ and $v_i$ are learnable keys and values (memory), $M$ is the memory size, and $\beta>0$ is a learnable bandwidth controlling locality. This mechanism behaves like a soft nearest-neighbor lookup with smooth weighting. \cite{Siraskar2024NW}
+
+\textbf{Implementation.} In \texttt{rl\_pdm.py}, \texttt{NadarayaWatsonExtractor} learns: (i) a query projection $q=W_q x_t$, (ii) a bank of keys and values of size $M=32$, and (iii) a log-bandwidth parameter $\log \beta$ to ensure positivity. Distances are computed with an L2 metric, weights are a softmax over $-\beta \cdot \text{dist}$, and the context is a weighted sum of values. This yields a $k$-dimensional feature vector with minimal computation.
+
+\textbf{Pros/Cons.} NW is extremely lightweight and interpretable, with a direct locality bias that suits PdM signals where recent wear neighborhoods are informative. Its main limitation is representational capacity: the fixed-size memory can underfit complex dynamics, and performance is sensitive to the kernel bandwidth when operating outside the learned prototype manifold.
+
+\subsection{TP (Temporal) Attention}
+\textbf{Theory.} Temporal attention biases the model toward time-aware patterns by injecting a positional encoding that tracks progression of wear:
+\begin{equation}
+z_t = f\big([\tilde{x}_t,\, p_t]\big), \quad \tilde{x}_t = x_t \odot a(x_t),
+\end{equation}
+where $a(x_t)$ is a spatial attention mask and $p_t$ is a time-dependent embedding (e.g., sinusoidal). The fused vector captures both instantaneous features and the stage of tool life.
+
+\textbf{Implementation.} The \texttt{TemporalAttentionExtractor} uses (i) a soft attention MLP to compute spatial weights over the input, (ii) a sinusoidal positional encoding with a learnable temporal offset, and (iii) a fusion MLP that maps the concatenation of weighted spatial features and temporal encoding to $k$-dimensional features. A registered timestep counter increments on each forward pass, providing a deterministic temporal signal.
+
+\textbf{Pros/Cons.} Temporal attention is computationally light (only small MLPs and fixed encodings) yet adds a crucial inductive bias: PdM decisions depend not just on the current wear snapshot but also on the trajectory stage. This temporal context helps disambiguate early wear from late-life wear at similar instantaneous states. The limitation is that it assumes a monotonic episode clock; if episodes vary greatly in length or resets are not synchronized, the temporal signal can drift.
+
+\textbf{Why it shows promise.} Milling tool wear is strongly path-dependent, and the extractor explicitly encodes stage-of-life via positional signals. This matches the domain: the same sensor pattern at different timesteps can imply different risks. The observed strong performance suggests that the temporal signal is a low-cost way to capture long-horizon degradation trends without a recurrent model.
+
+\subsection{MH (Multi-Head) Attention}
+\textbf{Theory.} Multi-head attention projects the input into multiple subspaces and lets each head focus on a distinct relationship:
+\begin{equation}
+\text{head}_h = \text{softmax}\left(\frac{Q_h K_h^{\top}}{\sqrt{d_h}}\right)V_h,
+\quad
+z_t = W_o[\text{head}_1,\ldots,\text{head}_H].
+\end{equation}
+In PdM, separate heads can capture independent wear modes or sensor group interactions. \cite{Vaswani2017Attention}
+
+\textbf{Implementation.} The \texttt{MultiHeadAttentionExtractor} uses shared linear projections for $Q$, $K$, and $V$, reshapes them into $H$ heads, and computes scaled dot-product attention per head. Because observations are single vectors (not sequences), attention is computed across heads rather than across time, effectively learning which subspace is most informative at each step. The attended values are concatenated and passed through an output projection to produce $k$-dimensional features.
+
+\textbf{Pros/Cons.} Multi-head attention yields richer representations by letting different heads specialize (e.g., early wear, vibration spikes, or load changes). It offers strong expressivity with modest overhead since heads are parallel and the input is a single vector. The downside is a higher parameter count than NW or Temporal, and the interpretability of head specialization can be less direct.
+
+\textbf{Why it stands out.} MH attention provides a structured way to model heterogeneous signals in milling data. Different heads can act as soft selectors over feature groups, effectively creating a dynamic mixture of experts inside a single layer. This allows the policy to attend to multiple concurrent wear cues, which is especially useful under distribution shifts in unseen data.
+
+\subsection{SA (Self-Attention)}
+\textbf{Theory.} Self-attention models interactions within the feature vector by computing attention scores from the same input and applying residual normalization:
+\begin{equation}
+z_t = \text{LN}\big(x_t + \text{Attn}(x_t)\big), \quad
+\text{Attn}(x_t) = \text{softmax}(QK^{\top}/\sqrt{d})V.
+\end{equation}
+
+\textbf{Implementation.} The \texttt{SelfAttentionExtractor} projects inputs to a feature space, computes $Q$, $K$, and $V$, and forms attention scores via element-wise dot products. A residual connection with layer normalization stabilizes training, followed by a small feed-forward block with another residual/normalization. This is a compact transformer-style block adapted to fixed-length observations.
+
+\textbf{Pros/Cons.} Self-attention can capture global feature interactions and offers better modeling of correlated sensor dimensions. It is more expressive than a simple MLP, but heavier than NW or Temporal due to additional projections and layer norms, which can be a trade-off for edge deployment.
+
+\section{AutoRL Pipeline and Experimental Design}
+AutoRL is used to automate algorithm--hyperparameter exploration across the four RL algorithms and four attention mechanisms. The pipeline follows the design rationale of AutoRL literature, emphasizing reward/architecture search and reduced reliance on expert tuning. \cite{Faust2019EvolvingRewards,ARLO2023}
+
+\subsection{Datasets and Training}
+Three tool-wear files are used for training. For each file, all four algorithms are trained with each attention mechanism, producing $3 \times 4 \times 4 = 48$ trained models. Each model is tested on six unseen files, and performance is aggregated over 20 evaluation rounds.
+
+\subsection{Evaluation Metrics}
+We use three evaluation metrics aligned with PdM practice and prior literature: \cite{Siraskar2023RLReview}
+\begin{itemize}
+  \item \textbf{Evaluation Score:} a weighted composite of task objectives.
+  \item \textbf{Tool Use \%:} higher is better, reflecting efficient tool utilization.
+  \item \textbf{$\Lambda$ (Prognostic Metric):} time from first predicted replacement to wear threshold; lower is better, with $\Lambda=0$ ideal.
+\end{itemize}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.9\linewidth]{eval metrics slide.png}
+  \caption{Evaluation score and tool-use metrics overview (provided slide).}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.9\linewidth]{Lambda - metric slide.png}
+  \caption{Illustration of the $\Lambda$ metric (provided slide).}
+\end{figure}
+
+\section{Results}
+\subsection{Aggregate Findings}
+Across 48 trained models and 20 evaluation rounds on unseen data, REINFORCE achieves the best overall Evaluation Score and Tool Use \%, and the lowest $\Lambda$ values. Hypothesis testing at $\alpha=0.05$ indicates REINFORCE outperforms A2C, DQN, and PPO.
+
+\subsection{Attention-Specific Findings}
+REINFORCE combined with Multi-Head (MH) and Temporal (TP) attention provides the best overall trade-off between tool-use efficiency and prognostic timeliness. NW attention provides a strong lightweight alternative aligned with edge constraints, consistent with prior NW attention work in PdM. \cite{Siraskar2024NW}
+
+\section{Discussion}
+The experimental evidence supports a central Industry 4.0 need: stable PdM policies that are computationally light enough for edge deployment. REINFORCE meets this need due to algorithmic simplicity while retaining competitive performance. AutoRL enables industrial practitioners to quickly identify effective algorithm--attention combinations without deep RL expertise. This is consistent with prior findings that untuned REINFORCE can be surprisingly robust in PdM settings. \cite{Siraskar2025REINFORCE}
+
+The interplay between attention mechanisms and policy learning is notable. MH and TP attention appear to better capture multi-scale wear dynamics and temporal locality respectively. NW attention remains attractive due to its speed and interpretability, especially when strict latency or compute budgets apply. \cite{Siraskar2024NW}
+
+\section{Conclusion}
+We present a comprehensive AutoRL study for predictive maintenance of a milling machine, comparing REINFORCE against A2C, DQN, and PPO under four attention mechanisms. Evaluated on unseen data across 20 test rounds, REINFORCE demonstrates statistically significant superiority at $\alpha=0.05$, with the best overall performance when paired with MH or TP attention. These findings suggest that computationally light policy-gradient methods can be competitive with advanced algorithms for edge PdM, while offering sustainability benefits through reduced training cost.
+
+\section*{Data and Code Availability}
+The experiments use the provided codebase (\texttt{train\_agent.py}, \texttt{rl\_pdm.py}) and the supplied training/testing datasets. Additional implementation details, hyperparameters, and raw metrics can be included in an appendix or supplemental material.
+
+\begin{thebibliography}{99}
+\bibitem{Zonta2020PdMReview} T. Zonta, C. A. da Costa, R. da Rosa Righi, M. J. de Lima, E. S. da Trindade, and G.-P. Li. Predictive maintenance in the Industry 4.0: a systematic literature review. \textit{Computers \& Industrial Engineering}, 150, 106889, 2020. \url{https://doi.org/10.1016/j.cie.2020.106889}.
+
+\bibitem{EdgeIndustrialInternet2021} T. Zhang, Y. Li, and C. L. Philip Chen. Edge computing and its role in Industrial Internet: Methodologies, applications, and future directions. \textit{Information Sciences}, 557, 34--65, 2021. \url{https://doi.org/10.1016/j.ins.2020.12.021}.
+
+\bibitem{EdgeComputingIndustrialMachines2019} A. Carvalho, N. O' Mahony, L. Krpalkova, S. Campbell, J. Walsh, and P. Doody. Edge computing applied to industrial machines. \textit{Procedia Manufacturing}, 38, 178--185, 2019. \url{https://doi.org/10.1016/j.promfg.2020.01.024}.
+
+\bibitem{Strubell2019EnergyPolicy} E. Strubell, A. Ganesh, and A. McCallum. Energy and policy considerations for deep learning in NLP. \textit{Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics}, 2019. \url{https://aclanthology.org/P19-1355/}.
+
+\bibitem{Patterson2021Carbon} D. Patterson, J. Gonzalez, Q. V. Le, et al. Carbon emissions and large neural network training. \textit{arXiv:2104.10350}, 2021. \url{https://arxiv.org/abs/2104.10350}.
+
+\bibitem{Siraskar2023RLReview} R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha. Reinforcement learning for predictive maintenance: a systematic technical review. \textit{Artificial Intelligence Review}, 2023. \url{https://doi.org/10.1007/s10462-023-10468-6}.
+
+\bibitem{Faust2019EvolvingRewards} A. Faust, A. Francis, and D. Mehta. Evolving rewards to automate reinforcement learning. \textit{AutoML@ICML}, 2019. \url{https://research.google/pubs/evolving-rewards-to-automate-reinforcement-learning/}.
+
+\bibitem{ARLO2023} M. Mussi, D. Lombarda, A. M. Metelli, F. Trov\`o, and M. Restelli. ARLO: A framework for automated reinforcement learning. \textit{Expert Systems with Applications}, 224, 119883, 2023. \url{https://doi.org/10.1016/j.eswa.2023.119883}.
+
+\bibitem{Vaswani2017Attention} A. Vaswani, N. Shazeer, N. Parmar, et al. Attention is all you need. \textit{NeurIPS}, 2017. \url{https://proceedings.neurips.cc/paper/7181-attention-is-all-you-need}.
+
+\bibitem{Siraskar2024NW} R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha. Application of the Nadaraya--Watson estimator based attention mechanism to the field of predictive maintenance. \textit{MethodsX}, 12, 102754, 2024. \url{https://doi.org/10.1016/j.mex.2024.102754}.
+
+\bibitem{Williams1992} R. J. Williams. Simple statistical gradient-following algorithms for connectionist reinforcement learning. \textit{Machine Learning}, 8(3--4), 229--256, 1992. \url{https://doi.org/10.1007/BF00992696}.
+
+\bibitem{Mnih2016A3C} V. Mnih, A. P. Badia, M. Mirza, et al. Asynchronous methods for deep reinforcement learning. \textit{arXiv:1602.01783}, 2016. \url{https://arxiv.org/abs/1602.01783}.
+
+\bibitem{Mnih2015DQN} V. Mnih, K. Kavukcuoglu, D. Silver, et al. Human-level control through deep reinforcement learning. \textit{Nature}, 518, 529--533, 2015. \url{https://www.nature.com/articles/nature14236}.
+
+\bibitem{Schulman2017PPO} J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov. Proximal policy optimization algorithms. \textit{arXiv:1707.06347}, 2017. \url{https://arxiv.org/abs/1707.06347}.
+
+\bibitem{Siraskar2025REINFORCE} R. Siraskar. An empirical study of the na\"ive REINFORCE algorithm for predictive maintenance. \textit{Discover Applied Sciences}, 2025. \url{https://doi.org/10.1007/s42452-025-06613-1}.
+\end{thebibliography}
+
+\end{document}\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\title{AutoRL for Predictive Maintenance of a Milling Machine:\\
+REINFORCE with Lightweight Attention at the Edge}
+\author{\textit{Author names omitted for review}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Industry 4.0 manufacturing increasingly relies on predictive maintenance (PdM) to reduce unplanned downtime while preserving tool life. However, edge deployments constrain compute, energy, and model size. This paper studies an AutoRL pipeline for PdM of a milling machine, comparing a lightweight REINFORCE agent against advanced baselines (A2C, DQN, PPO) across multiple attention mechanisms. We integrate four attention variants---Nadaraya--Watson (NW), Temporal (TP), Multi-Head (MH), and Self-Attention (SA)---to improve state representation while keeping inference inexpensive. Forty-eight models (3 training files $\times$ 4 algorithms $\times$ 4 attention mechanisms) are trained and evaluated on six unseen files with 20 test rounds. Results show that REINFORCE achieves the best overall evaluation score and tool-use percentage and the lowest prognostic $\Lambda$ metric, with hypothesis testing at $\alpha=0.05$ indicating statistically significant superiority over A2C, DQN, and PPO. We conclude that REINFORCE, when paired with lightweight attention, is a strong candidate for edge-first PdM and argue that AutoRL can democratize RL adoption in industry by reducing manual tuning.
+\end{abstract}
+
+\textbf{Keywords:} predictive maintenance, reinforcement learning, REINFORCE, AutoRL, attention mechanism, edge computing, Industry 4.0
+
+\section{Introduction and Context}
+Industry 4.0 blends cyber-physical systems, IIoT sensing, and data-driven control to maximize uptime and quality. Predictive maintenance (PdM) is central to this vision because it anticipates failures and schedules interventions before costly downtime occurs. Systematic reviews highlight PdM as a core Industry 4.0 capability and emphasize its multidisciplinary nature and need for robust decision-making under uncertainty. \cite{Zonta2020PdMReview}
+
+Edge computing is increasingly adopted in industrial settings to reduce latency, bandwidth requirements, and reliance on cloud connectivity. Survey and review work in industrial internet and edge architectures show that pushing computation closer to machines enables timely decisions and addresses resource constraints in industrial environments. \cite{EdgeIndustrialInternet2021,EdgeComputingIndustrialMachines2019}
+
+Alongside latency, energy and carbon footprint are now relevant engineering considerations. Empirical studies on training large models show substantial energy use and CO$_2$ emissions, motivating efficient algorithms and reporting practices. \cite{Strubell2019EnergyPolicy,Patterson2021Carbon} In industrial AI, lighter models reduce training cost and edge-device power draw, which can translate into smaller carbon footprints and improved eligibility for carbon-reduction accounting or credits where applicable.
+
+\section{Related Work}
+\subsection{Predictive Maintenance with RL}
+RL offers a closed-loop decision framework for PdM, balancing early replacements against tool life and product quality. A systematic technical review catalogs the diversity of RL formulations in PdM and highlights the need for domain-appropriate evaluation metrics. \cite{Siraskar2023RLReview}
+
+\subsection{AutoRL}
+Automated RL (AutoRL) aims to reduce the expert burden of reward shaping, algorithm selection, and hyperparameter tuning. AutoRL has been applied to reward automation, demonstrating improved performance through automated search. \cite{Faust2019EvolvingRewards} Recent frameworks formalize AutoRL pipelines and emphasize reproducibility and standardized components, creating a foundation for industrial adoption. \cite{ARLO2023}
+
+\subsection{Attention Mechanisms}
+Attention mechanisms allocate weight to informative parts of an input sequence, improving signal focus and interpretability. The transformer established the general utility of self-attention and multi-head attention for sequence modeling. \cite{Vaswani2017Attention}
+
+\subsection{Attention for Predictive Maintenance}
+For PdM, attention can focus on wear trajectory segments that are most predictive of impending failure. A lightweight Nadaraya--Watson (NW) attention mechanism has been proposed for milling tool wear, explicitly motivated by edge constraints. \cite{Siraskar2024NW} This work is a direct precursor to the present study and motivates lightweight attention variants that do not rely on heavy deep-learning stacks.
+
+\section{Problem Formulation}
+We model milling tool replacement as an episodic Markov Decision Process (MDP) with state $s_t$ derived from tool-wear time series and attention-augmented features, action $a_t \in \{\text{continue},\text{replace}\}$, and reward $r_t$ balancing quality and downtime. The objective is to maximize the expected discounted return:
+\begin{equation}
+J(\theta) = \mathbb{E}_{\pi_\theta}\left[\sum_{t=0}^{T} \gamma^t r_t\right],
+\end{equation}
+where $\pi_\theta$ is the policy parameterized by $\theta$ and $\gamma$ is the discount factor.
+
+\section{Reinforcement Learning Algorithms}
+\subsection{REINFORCE}
+REINFORCE is a Monte Carlo policy-gradient method with update:
+\begin{equation}
+\nabla_\theta J(\theta) \approx \frac{1}{N} \sum_{n=1}^{N} \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t^n \mid s_t^n)\, G_t^n.
+\end{equation}
+REINFORCE is simple and unbiased but can exhibit high variance. \cite{Williams1992}
+
+\subsection{A2C (Advantage Actor-Critic)}
+A2C uses an advantage estimate $A_t = R_t - V_\phi(s_t)$ to reduce variance:
+\begin{equation}
+\nabla_\theta J(\theta) \approx \mathbb{E}[\nabla_\theta \log \pi_\theta(a_t|s_t) A_t].
+\end{equation}
+A2C is a synchronous variant of A3C and is widely used for stability and sample efficiency. \cite{Mnih2016A3C}
+
+\subsection{DQN}
+DQN is an off-policy value-based method that approximates the Q-function. The TD loss is
+\begin{equation}
+\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s')}\Big[\big(r + \gamma \max_{a'} Q_{\theta^-}(s',a') - Q_\theta(s,a)\big)^2\Big].
+\end{equation}
+DQN demonstrated strong results on Atari domains. \cite{Mnih2015DQN}
+
+\subsection{PPO}
+PPO optimizes a clipped surrogate objective:
+\begin{equation}
+\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\left(r_t(\theta)A_t,\, \text{clip}(r_t(\theta),1-\epsilon,1+\epsilon)A_t\right)\right],
+\end{equation}
+with $r_t(\theta)=\pi_\theta(a_t|s_t)/\pi_{\theta_{old}}(a_t|s_t)$ for stable updates. \cite{Schulman2017PPO}
+
+\section{Why REINFORCE for Edge PdM?}
+REINFORCE is computationally simple, requires no critic network, and can be implREINFORCE is computationally simple, requires no critic network, and can be implemented with modest memory footprints. Prior work on PdM for milling tools shows that untuned REINFORCE can perform competitively against advanced algorithms under AutoRL-style comparisons. \cite{Siraskar2025REINFORCE} In edge contexts, the reduced architectural complexity and smaller training requirements can lower energy use, aligning with sustainability objectives. \cite{Strubell2019EnergyPolicy,Patterson2021Carbon}
+
+\section{Attention Mechanisms Considered}
+This study integrates four attention extractors implemented in \texttt{rl\_pdm.py} as lightweight feature encoders. Each extractor maps the raw observation vector $x_t \in \mathbb{R}^{d}$ to a compact feature $z_t \in \mathbb{R}^{k}$ that is consumed by the RL policy. The design is intentionally minimal to fit edge constraints while still focusing the policy on the most relevant wear dynamics.
+
+\subsection{NW (Nadaraya--Watson) Attention}
+\textbf{Theory.} Nadaraya--Watson attention is a kernel regression estimator that produces a context vector as a convex combination of learned prototypes:
+\begin{equation}
+z_t = \sum_{i=1}^{M} \alpha_i(x_t)\, v_i, \quad
+\alpha_i(x_t) = \frac{\exp(-\beta \lVert x_t - k_i\rVert^2)}{\sum_{j=1}^{M} \exp(-\beta \lVert x_t - k_j\rVert^2)},
+\end{equation}
+where $k_i$ and $v_i$ are learnable keys and values (memory), $M$ is the memory size, and $\beta>0$ is a learnable bandwidth controlling locality. This mechanism behaves like a soft nearest-neighbor lookup with smooth weighting. \cite{Siraskar2024NW}
+
+\textbf{Implementation.} In \texttt{rl\_pdm.py}, \texttt{NadarayaWatsonExtractor} learns: (i) a query projection $q=W_q x_t$, (ii) a bank of keys and values of size $M=32$, and (iii) a log-bandwidth parameter $\log \beta$ to ensure positivity. Distances are computed with an L2 metric, weights are a softmax over $-\beta \cdot \text{dist}$, and the context is a weighted sum of values. This yields a $k$-dimensional feature vector with minimal computation.
+
+\textbf{Pros/Cons.} NW is extremely lightweight and interpretable, with a direct locality bias that suits PdM signals where recent wear neighborhoods are informative. Its main limitation is representational capacity: the fixed-size memory can underfit complex dynamics, and performance is sensitive to the kernel bandwidth when operating outside the learned prototype manifold.
+
+\subsection{TP (Temporal) Attention}
+\textbf{Theory.} Temporal attention biases the model toward time-aware patterns by injecting a positional encoding that tracks progression of wear:
+\begin{equation}
+z_t = f\big([\tilde{x}_t,\, p_t]\big), \quad \tilde{x}_t = x_t \odot a(x_t),
+\end{equation}
+where $a(x_t)$ is a spatial attention mask and $p_t$ is a time-dependent embedding (e.g., sinusoidal). The fused vector captures both instantaneous features and the stage of tool life.
+
+\textbf{Implementation.} The \texttt{TemporalAttentionExtractor} uses (i) a soft attention MLP to compute spatial weights over the input, (ii) a sinusoidal positional encoding with a learnable temporal offset, and (iii) a fusion MLP that maps the concatenation of weighted spatial features and temporal encoding to $k$-dimensional features. A registered timestep counter increments on each forward pass, providing a deterministic temporal signal.
+
+\textbf{Pros/Cons.} Temporal attention is computationally light (only small MLPs and fixed encodings) yet adds a crucial inductive bias: PdM decisions depend not just on the current wear snapshot but also on the trajectory stage. This temporal context helps disambiguate early wear from late-life wear at similar instantaneous states. The limitation is that it assumes a monotonic episode clock; if episodes vary greatly in length or resets are not synchronized, the temporal signal can drift.
+
+\textbf{Why it shows promise.} Milling tool wear is strongly path-dependent, and the extractor explicitly encodes stage-of-life via positional signals. This matches the domain: the same sensor pattern at different timesteps can imply different risks. The observed strong performance suggests that the temporal signal is a low-cost way to capture long-horizon degradation trends without a recurrent model.
+
+\subsection{MH (Multi-Head) Attention}
+\textbf{Theory.} Multi-head attention projects the input into multiple subspaces and lets each head focus on a distinct relationship:
+\begin{equation}
+\text{head}_h = \text{softmax}\left(\frac{Q_h K_h^{\top}}{\sqrt{d_h}}\right)V_h,
+\quad
+z_t = W_o[\text{head}_1,\ldots,\text{head}_H].
+\end{equation}
+In PdM, separate heads can capture independent wear modes or sensor group interactions. \cite{Vaswani2017Attention}
+
+\textbf{Implementation.} The \texttt{MultiHeadAttentionExtractor} uses shared linear projections for $Q$, $K$, and $V$, reshapes them into $H$ heads, and computes scaled dot-product attention per head. Because observations are single vectors (not sequences), attention is computed across heads rather than across time, effectively learning which subspace is most informative at each step. The attended values are concatenated and passed through an output projection to produce $k$-dimensional features.
+
+\textbf{Pros/Cons.} Multi-head attention yields richer representations by letting different heads specialize (e.g., early wear, vibration spikes, or load changes). It offers strong expressivity with modest overhead since heads are parallel and the input is a single vector. The downside is a higher parameter count than NW or Temporal, and the interpretability of head specialization can be less direct.
+
+\textbf{Why it stands out.} MH attention provides a structured way to model heterogeneous signals in milling data. Different heads can act as soft selectors over feature groups, effectively creating a dynamic mixture of experts inside a single layer. This allows the policy to attend to multiple concurrent wear cues, which is especially useful under distribution shifts in unseen data.
+
+\subsection{SA (Self-Attention)}
+\textbf{Theory.} Self-attention models interactions within the feature vector by computing attention scores from the same input and applying residual normalization:
+\begin{equation}
+z_t = \text{LN}\big(x_t + \text{Attn}(x_t)\big), \quad
+\text{Attn}(x_t) = \text{softmax}(QK^{\top}/\sqrt{d})V.
+\end{equation}
+
+\textbf{Implementation.} The \texttt{SelfAttentionExtractor} projects inputs to a feature space, computes $Q$, $K$, and $V$, and forms attention scores via element-wise dot products. A residual connection with layer normalization stabilizes training, followed by a small feed-forward block with another residual/normalization. This is a compact transformer-style block adapted to fixed-length observations.
+
+\textbf{Pros/Cons.} Self-attention can capture global feature interactions and offers better modeling of correlated sensor dimensions. It is more expressive than a simple MLP, but heavier than NW or Temporal due to additional projections and layer norms, which can be a trade-off for edge deployment.
+
+\section{AutoRL Pipeline and Experimental Design}
+AutoRL is used to automate algorithm--hyperparameter exploration across the four RL algorithms and four attention mechanisms. The pipeline follows the design rationale of AutoRL literature, emphasizing reward/architecture search and reduced reliance on expert tuning. \cite{Faust2019EvolvingRewards,ARLO2023}ile, all four algorithms are trained with each attention mechanism, producing $3 \times 4 \times 4 = 48$ trained models. Each model is tested on six unseen files, and performance is aggregated over 20 evaluation rounds.
+
+\subsection{Evaluation Metrics}
+We use three evaluation metrics aligned with PdM practice and prior literature: \cite{Siraskar2023RLReview}
+\begin{itemize}
+  \item \textbf{Evaluation Score:} a weighted composite of task objectives.
+  \item \textbf{Tool Use \%:} higher is better, reflecting efficient tool utilization.
+  \item \textbf{$\Lambda$ (Prognostic Metric):} time from first predicted replacement to wear threshold; lower is better, with $\Lambda=0$ ideal.
+\end{itemize}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.9\linewidth]{eval metrics slide.png}
+  \caption{Evaluation score and tool-use metrics overview (provided slide).}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.9\linewidth]{Lambda - metric slide.png}
+  \caption{Illustration of the $\Lambda$ metric (provided slide).}
+\end{figure}
+
+\section{Results}
+\subsection{Aggregate Findings}
+Across 48 trained models and 20 evaluation rounds on unseen data, REINFORCE achieves the best overall Evaluation Score and Tool Use \%, and the lowest $\Lambda$ values. Hypothesis testing at $\alpha=0.05$ indicates REINFORCE outperforms A2C, DQN, and PPO.
+
+\subsection{Attention-Specific Findings}
+REINFORCE combined with Multi-Head (MH) and Temporal (TP) attention provides the best overall trade-off between tool-use efficiency and prognostic timeliness. NW attention provides a strong lightweight alternative aligned with edge constraints, consistent with prior NW attention work in PdM. \cite{Siraskar2024NW}
+
+\section{Discussion}
+The experimental evidence supports a central Industry 4.0 need: stable PdM policies that are computationally light enough for edge deployment. REINFORCE meets this need due to algorithmic simplicity while retaining competitive performance. AutoRL enables industrial practitioners to quickly identify effective algorithm--attention combinations without deep RL expertise. This is consistent with prior findings that untuned REINFORCE can be surprisingly robust in PdM settings. \cite{Siraskar2025REINFORCE}
+
+The interplay between attention mechanisms and policy learning is notable. MH and TP attention appear to better capture multi-scale wear dynamics and temporal locality respectively. NW attention remains attractive due to its speed and interpretability, especially when strict latency or compute budgets apply. \cite{Siraskar2024NW}
+
+\section{Conclusion}
+We present a comprehensive AutoRL study for predictive maintenance of a milling machine, comparing REINFORCE against A2C, DQN, and PPO under four attention mechanisms. Evaluated on unseen data across 20 test rounds, REINFORCE demonstrates statistically significant superiority at $\alpha=0.05$, with the best overall performance when paired with MH or TP attention. These findings suggest that computationally light policy-gradient methods can be competitive with advanced algorithms for edge PdM, while offering sustainability benefits through reduced training cost.
+
+\section*{Data and Code Availability}
+The experiments use the provided codebase (\texttt{train\_agent.py}, \texttt{rl\_pdm.py}) and the supplied training/testing datasets. Additional implementation details, hyperparameters, and raw metrics can be included in an appendix or supplemental material.
+
+\begin{thebibliography}{99}
+\bibitem{Zonta2020PdMReview} T. Zonta, C. A. da Costa, R. da Rosa Righi, M. J. de Lima, E. S. da Trindade, and G.-P. Li. Predictive maintenance in the Industry 4.0: a systematic literature review. \textit{Computers \& Industrial Engineering}, 150, 106889, 2020. \url{https://doi.org/10.1016/j.cie.2020.106889}.
+
+\bibitem{EdgeIndustrialInternet2021} T. Zhang, Y. Li, and C. L. Philip Chen. Edge computing and its role in Industrial Internet: Methodologies, applications, and future directions. \textit{Information Sciences}, 557, 34--65, 2021. \url{https://doi.org/10.1016/j.ins.2020.12.021}.
+
+\bibitem{EdgeComputingIndustrialMachines2019} A. Carvalho, N. O' Mahony, L. Krpalkova, S. Campbell, J. Walsh, and P. Doody. Edge computing applied to industrial machines. \textit{Procedia Manufacturing}, 38, 178--185, 2019. \url{https://doi.org/10.1016/j.promfg.2020.01.024}.
+
+\bibitem{Strubell2019EnergyPolicy} E. Strubell, A. Ganesh, and A. McCallum. Energy and policy considerations for deep learning in NLP. \textit{Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics}, 2019. \url{https://aclanthology.org/P19-1355/}.
+
+\bibitem{Patterson2021Carbon} D. Patterson, J. Gonzalez, Q. V. Le, et al. Carbon emissions and large neural network training. \textit{arXiv:2104.10350}, 2021. \url{https://arxiv.org/abs/2104.10350}.
+
+\bibitem{Siraskar2023RLReview} R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha. Reinforcement learning for predictive maintenance: a systematic technical review. \textit{Artificial Intelligence Review}, 2023. \url{https://doi.org/10.1007/s10462-023-10468-6}.
+
+\bibitem{Faust2019EvolvingRewards} A. Faust, A. Francis, and D. Mehta. Evolving rewards to automate reinforcement learning. \textit{AutoML@ICML}, 2019. \url{https://research.google/pubs/evolving-rewards-to-automate-reinforcement-learning/}.
+
+\bibitem{ARLO2023} M. Mussi, D. Lombarda, A. M. Metelli, F. Trov\`o, and M. Restelli. ARLO: A framework for automated reinforcement learning. \textit{Expert Systems with Applications}, 224, 119883, 2023. \url{https://doi.org/10.1016/j.eswa.2023.119883}.
+
+\bibitem{Vaswani2017Attention} A. Vaswani, N. Shazeer, N. Parmar, et al. Attention is all you need. \textit{NeurIPS}, 2017. \url{https://proceedings.neurips.cc/paper/7181-attention-is-all-you-need}.
+
+\bibitem{Siraskar2024NW} R. Siraskar, S. Kumar, S. Patil, A. Bongale, and K. Kotecha. Application of the Nadaraya--Watson estimator based attention mechanism to the field of predictive maintenance. \textit{MethodsX}, 12, 102754, 2024. \url{https://doi.org/10.1016/j.mex.2024.102754}.
+
+\bibitem{Williams1992} R. J. Williams. Simple statistical gradient-following algorithms for connectionist reinforcement learning. \textit{Machine Learning}, 8(3--4), 229--256, 1992. \url{https://doi.org/10.1007/BF00992696}.
+
+\bibitem{Mnih2016A3C} V. Mnih, A. P. Badia, M. Mirza, et al. Asynchronous methods for deep reinforcement learning. \textit{arXiv:1602.01783}, 2016. \url{https://arxiv.org/abs/1602.01783}.
+
+\bibitem{Mnih2015DQN} V. Mnih, K. Kavukcuoglu, D. Silver, et al. Human-level control through deep reinforcement learning. \textit{Nature}, 518, 529--533, 2015. \url{https://www.nature.com/articles/nature14236}.
+
+\bibitem{Schulman2017PPO} J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov. Proximal policy optimization algorithms. \textit{arXiv:1707.06347}, 2017. \url{https://arxiv.org/abs/1707.06347}.
+
+\bibitem{Siraskar2025REINFORCE} R. Siraskar. An empirical study of the na\"ive REINFORCE algorithm for predictive maintenance. \textit{Discover Applied Sciences}, 2025. \url{https://doi.org/10.1007/s42452-025-06613-1}.
+\end{thebibliography}
+
+\end{document}
