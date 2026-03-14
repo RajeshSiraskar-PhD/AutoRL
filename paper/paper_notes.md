@@ -40,3 +40,211 @@ _Statistical_t_SIT_Set-1 > t-test t-stat values heat map (green is best, red is 
 Artefact 4:
 _Hypothesis_Tests_SIT_Set-1.csv > Hypthesis values
 
+=========================================================================
+# P.E. AREA > Prisim, VSCode and UnderMind 
+------------------------------------------------------------------------
+## Thoughts for starting research article
+------------------------------------------------------------------------
+
+Write an article suitable for publication in a high level scientific journal. 
+
+Research Theme: Reinforcement Learning using REINFORCE algorithm for predictive mainteance
+Research Topic: Study and implemention of AutoRL for creating Reinforcement Learning agents for predictive mainteance of a milling machine. 
+
+Research Objective: Industry 4.0, Edge computing requires computationally light weight models. Determine if REINFORCE models are as good as more advanced models such as PPO for this task 
+
+You are provided the following:
+1. Code base - two files. train_agent.py - that runs the autoRL and evaluation pipelines. rl_pdm.py that contains the attention mechanisms implemtations
+2. Results of the trained models - evaluated on unseen data
+3. Two slides about evaluation metrics
+
+Instructions:
+
+1. Overall length of paper, less than 15 pages
+2. Scientific PhD audience, think Springer Nature or IEEE Xplore level.
+3. Formulas in LateX formats
+4. Cite relevant and as far as possible **recent** or **seminal** research
+
+5. Create sections and write about the following:
+ - Setting the context: Industry 4.0 + predictive maintenance + edge computing + computationaly light and light weight AI-ML models + lesser carbon footprint when training lighter models + carbon credits
+ - AutoRL
+ - Attention mechanism in general
+ - Attention mechanism for predictive mainteance
+ - All basic RL algorithms - A2C, DQN, PPO and REINFORCE
+ - Why REINFORCE could be best suited
+ 
+6. My own previous research for creating a sound segway for this research. Use content from this and cite these without fail.
+
+	Ref. 1. An empirical study of the naïve REINFORCE algorithm for predictive maintenance - https://link.springer.com/article/10.1007/s42452-025-06613-1
+	For: Study of automated RL frameworks (AutoRL) as platforms to encourage industrial practitioners to apply RL to their problems. The empirical study demonstrated that, in the untuned state, simpler algorithms like the REINFORCE perform reasonably well. For AutoRL frameworks, this research encourages seeking new design approaches to automatically identify optimum algorithm-hyperparameter combinations.
+
+	Ref. 2. Application of the Nadaraya-Watson estimator based attention mechanism to the field of predictive maintenance -  https://www.sciencedirect.com/science/article/pii/S2215016124002073
+	For: I applied attention mechanism to predictive maintenance.
+
+	Ref. 3. Reinforcement learning for predictive maintenance: a systematic technical review -
+	https://link.springer.com/article/10.1007/s10462-023-10468-6
+	For: The section on prognostic specific evaluation metrics. Lambda is what I used. Lambda = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal. 
+
+7. Attention mechanisms used:
+   - NW - NadarayaWatson
+   - TP - Temporal attention
+   - MH - MultiHead
+   - SA - Self Attention 
+   
+8. RESULTS:
+ - Models were trained using 3 data files
+ - 4 algorithms and 4 attention mechanisms were used
+ - 3 x 4 x 4 i.e.. 48 models trained
+ - Tested on 6 other **unseen** data files
+
+Metrics for evaluation: 
+- A model weighted score "Evaluation Score"
+- Tool use % (higher the better)
+- Lambda metric is a prognostic specific metric from = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal. 
+- Evalaution was based on running 20 rounds of testing on UNSEEN data
+- Mention hypothesis testing showed REINFORCE was better than all other algos. using alpha = 0.05
+- Then show REINFORCE with multi-head and temporal is the overall best suggestion.
+
+Expand Section on Attention Mechanisms Considered - 
+1. Study the rl_pdm.py, look at how each attention mechanism is implemented - write about that.
+2. Write in MORE detail about each attention mechanism, how it is implemented in theory - how it was implemented
+3. What is special about - pros/cons
+4. Finally make Multi-head stand out
+5. Why is Temporal showing so much promise too
+
+------------------------------------------------
+12-Mar-2026: PRISM PE 
+------------------------------------------------
+
+Take a critical look at Artcile_VSC.tex. It was essentially written on the same subject. 
+However it had access to the code I actually implemented for AuoRL in Python. 
+Given the code - that artcile (Artcile_VSC) - has similar sections like say Temporal Attention - 
+but is written around how it was actually implemented.
+
+The article you authored i.e. 'Main_Article.tex' was based on information on the internet.
+
+Your task:
+1. First change all citations to the authorname-year format (e.g. Siraskar et al (2023))
+2. Review what you have written is factually right
+3. Merge contents from Artcile_VSC and expand Main_Article.tex
+4. Ensure final article is logical and consistent
+5. Important: Ensure implement details are retained with subheading "Design and Implemention"
+6. Ensure article is more detailed - for eg if there are MDP related details in the Article_VSC that are 
+missed in Main_Artcile, include them
+7. If additional references are need to support the Article_VSC content, add that - 
+again insure that it is factually correct with references and citations
+
+=========================================================================
+# V.2. 14-Mar-2026 > 
+=========================================================================
+
+Write a scientific artcile for a PhD student's level research. Must contain scientific tone, formulas and in general a scientific treatment, however avoid overly complex language. 
+
+# Structure of article:
+1. Background
+2. Core foundational concepts 
+3. Linking foundational concepts to how they were implemented
+4. Experimental design
+5. Experimental results
+6. Further research directions
+7. Conclusions
+
+# Specifications:
+1. Referencing style: APA 7
+2. Tables: Light grey heading row and bold titles. Numbers always 3 decimal places. For results use averages and the CI mentioned
+3. Figures: If you are unable to paste figures - give a URL link. However create the sub-figure or figure arrays correctly
+4. Always ensure content references concepts that are explained previously in the paper for flow and provide Section references
+
+## Hypothesis
+1. Primary hypothesis: The computationally light REINFORCE algo performs better than more advanced A2C, DQN and PPO
+2. Scondary hypothesis: The same RL environment design and reward function design works perfectly well for different milling machine settings - proved by using two very different data sets IEEE and SIT 
+3. Secondary hypothesis: Attention mechanism can add to REINFORCE whenver it lacks and perform better that PPO the most advanced algorithm
+
+## Result Artefacts - 4 artefacts for supporting 3 hypotheses
+
+Artefact 1: 
+_Analysis_Report_SIT_Set-N 
+- Consolidated analysis dashboard. 
+
+Parts of the Analysis Report components:
+----------------------------------------
+1. OVERALL PERFORMANCE -- Eval score in a 4x4 matrix. Algo by Attention
+2. MODEL PERFORMANCE -- Attention & Algo, but as a bar chart and importantly "CI based confidence error bars" 
+3. ALGORITHM PERFORMANCE - Focussed on algorithm (Avg ± CI)
+4. LAMBDA METRIC - focussed on Lambda - which is a prognostic specific metric Lambda i.e how close to threhold is the first prediction made. Too big +ve number means its either too early and too big a -ve number means too late. A small +/- Lambda is good - we are close enough to threshold that we maximize tool life as well as save work piece quality
+
+Artefact 2: 
+_Heatmap_SIT_Set-N 
+- How each model trained on data set X, did when evaluated on dataset Y 
+
+Artefact 3:
+_Statistical_p-value_SIT_Set-1 > p value heat map (blue is best, red is worst)
+_Statistical_t_SIT_Set-1 > t-test t-stat values heat map (green is best, red is worst)
+
+Artefact 4:
+_Hypothesis_Tests_SIT_Set-1.csv > Hypthesis values
+
+
+Research Theme: Reinforcement Learning using REINFORCE algorithm for predictive mainteance
+Research Topic: Study and implemention of AutoRL for creating Reinforcement Learning agents for predictive mainteance of a milling machine. 
+
+Research Objective: Industry 4.0, Edge computing requires computationally light weight models. Determine if REINFORCE models are as good as more advanced models such as PPO for this task 
+
+You are provided the following:
+1. Code base - two files. train_agent.py - that runs the autoRL and evaluation pipelines. rl_pdm.py that contains the attention mechanisms implemtations
+2. Results of the trained models - evaluated on unseen data
+3. Two slides about evaluation metrics
+
+Instructions:
+
+1. Overall length of paper, less than 15 pages
+2. Scientific PhD audience, think Springer Nature or IEEE Xplore level.
+3. Formulas in LateX formats
+4. Cite relevant and as far as possible **recent** or **seminal** research
+
+5. Create sections and write about the following:
+ - Setting the context: Industry 4.0 + predictive maintenance + edge computing + computationaly light and light weight AI-ML models + lesser carbon footprint when training lighter models + carbon credits
+ - AutoRL
+ - Attention mechanism in general
+ - Attention mechanism for predictive mainteance
+ - All basic RL algorithms - A2C, DQN, PPO and REINFORCE
+ - Why REINFORCE could be best suited
+ 
+6. My own previous research for creating a sound segway for this research. Use content from this and cite these without fail.
+
+	Ref. 1. An empirical study of the naïve REINFORCE algorithm for predictive maintenance - https://link.springer.com/article/10.1007/s42452-025-06613-1
+	For: Study of automated RL frameworks (AutoRL) as platforms to encourage industrial practitioners to apply RL to their problems. The empirical study demonstrated that, in the untuned state, simpler algorithms like the REINFORCE perform reasonably well. For AutoRL frameworks, this research encourages seeking new design approaches to automatically identify optimum algorithm-hyperparameter combinations.
+
+	Ref. 2. Application of the Nadaraya-Watson estimator based attention mechanism to the field of predictive maintenance -  https://www.sciencedirect.com/science/article/pii/S2215016124002073
+	For: I applied attention mechanism to predictive maintenance.
+
+	Ref. 3. Reinforcement learning for predictive maintenance: a systematic technical review -
+	https://link.springer.com/article/10.1007/s10462-023-10468-6
+	For: The section on prognostic specific evaluation metrics. Lambda is what I used. Lambda = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal. 
+
+7. Attention mechanisms used:
+   - NW - NadarayaWatson
+   - TP - Temporal attention
+   - MH - MultiHead
+   - SA - Self Attention 
+   
+8. RESULTS:
+ - Models were trained using 3 data files
+ - 4 algorithms and 4 attention mechanisms were used
+ - 3 x 4 x 4 i.e.. 48 models trained
+ - Tested on 6 other **unseen** data files
+
+Metrics for evaluation: 
+- A model weighted score "Evaluation Score"
+- Tool use % (higher the better)
+- Lambda metric is a prognostic specific metric from = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal. 
+- Evalaution was based on running 20 rounds of testing on UNSEEN data
+- Mention hypothesis testing showed REINFORCE was better than all other algos. using alpha = 0.05
+- Then show REINFORCE with multi-head and temporal is the overall best suggestion.
+
+Expand Section on Attention Mechanisms Considered - 
+1. Study the rl_pdm.py, look at how each attention mechanism is implemented - write about that.
+2. Write in MORE detail about each attention mechanism, how it is implemented in theory - how it was implemented
+3. What is special about - pros/cons
+4. Finally make Multi-head stand out
+5. Why is Temporal showing so much promise too
