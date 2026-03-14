@@ -149,6 +149,18 @@ Write a scientific artcile for a PhD student's level research. Must contain scie
 6. Further research directions
 7. Conclusions
 
+# About the research
+- Theme: Reinforcement Learning (RL) for Industry 4.0 based Predictive Mainteance (PdM)
+- Specific industrial domain: Predictive maintenance (PdM) of a **milling machine**
+- Research objectives: 
+	RO-1. Industry 4.0: Study various RL algos suitable for PdM
+	RO-2. AutoRL: Implement an AutoRL pipeline for creating Reinforcement Learning agents for predictive mainteance
+	RO-3. Designed for industrial practioners: The AutoRL allows **industrial practioners** to implement RL - without having to understand RL and hyperparameter tuning
+	RO-4. RL environment: Design a RL environment using open source design standards - Open AI Gymnassioum - for a milling machine
+	RO-5. RL environment: The RL environment design follows an abstract class OOPS concept - should work for different schemas - ie. different machines and settings and sensor data
+	RO-6. Edge compute and Carbon credits: Edge computing requires computationally light weight models. Study scientifically if REINFORCE performs better - since it is a computationally light model
+	RO-7. Attention mechanism: Where REINFORCE and other advanced algos are almost at par - can implementing attention mechanism for REINFORCE improve its performance to match say PPO
+
 # Specifications:
 1. Referencing style: APA 7
 2. Tables: Light grey heading row and bold titles. Numbers always 3 decimal places. For results use averages and the CI mentioned
@@ -160,10 +172,22 @@ Write a scientific artcile for a PhD student's level research. Must contain scie
 2. Scondary hypothesis: The same RL environment design and reward function design works perfectly well for different milling machine settings - proved by using two very different data sets IEEE and SIT 
 3. Secondary hypothesis: Attention mechanism can add to REINFORCE whenver it lacks and perform better that PPO the most advanced algorithm
 
+## Code artefacts - 2 python code files
+
+1. batch_train.py - that runs the autoRL and evaluation pipelines. 
+2. rl_pdm.py that contains the environment MT_Env, REINFORCE from scratch implementation, other algo wrapper functions based on Stablebaselines-3 library and from scratch implemtations of attention mechanisms
+3. Attention mechanisms implemented:
+   - NW - NadarayaWatson
+   - TP - Temporal attention
+   - MH - MultiHead
+   - SA - Self Attention 
+
 ## Result Artefacts - 4 artefacts for supporting 3 hypotheses
 
+Note: All analysis and results are of a trained model evaluated on unseen data (within that Schema - so either SIT dataset or IEEE dataset)
+
 Artefact 1: 
-_Analysis_Report_SIT_Set-N 
+_Analysis_Report_SIT_Set-N.pdf 
 - Consolidated analysis dashboard. 
 
 Parts of the Analysis Report components:
@@ -174,28 +198,34 @@ Parts of the Analysis Report components:
 4. LAMBDA METRIC - focussed on Lambda - which is a prognostic specific metric Lambda i.e how close to threhold is the first prediction made. Too big +ve number means its either too early and too big a -ve number means too late. A small +/- Lambda is good - we are close enough to threshold that we maximize tool life as well as save work piece quality
 
 Artefact 2: 
-_Heatmap_SIT_Set-N 
+_Heatmap_SIT_Set-N.pdf 
 - How each model trained on data set X, did when evaluated on dataset Y 
 
 Artefact 3:
-_Statistical_p-value_SIT_Set-1 > p value heat map (blue is best, red is worst)
-_Statistical_t_SIT_Set-1 > t-test t-stat values heat map (green is best, red is worst)
+_Statistical_p-value_SIT_Set-1.pdf > p value heat map (blue is best, red is worst)
+_Statistical_t_SIT_Set-1.pdf > t-test t-stat values heat map (green is best, red is worst)
 
 Artefact 4:
 _Hypothesis_Tests_SIT_Set-1.csv > Hypthesis values
 
+# Instructions for writing the content:
 
-Research Theme: Reinforcement Learning using REINFORCE algorithm for predictive mainteance
-Research Topic: Study and implemention of AutoRL for creating Reinforcement Learning agents for predictive mainteance of a milling machine. 
 
-Research Objective: Industry 4.0, Edge computing requires computationally light weight models. Determine if REINFORCE models are as good as more advanced models such as PPO for this task 
 
-You are provided the following:
-1. Code base - two files. train_agent.py - that runs the autoRL and evaluation pipelines. rl_pdm.py that contains the attention mechanisms implemtations
-2. Results of the trained models - evaluated on unseen data
-3. Two slides about evaluation metrics
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
-Instructions:
+$$$ STOP $$ REPEAT DUPLICATE HERE $$$ 
+
+## Structure of article:
+1. Background
+2. Core foundational concepts 
+3. Linking foundational concepts to how they were implemented
+4. Experimental design
+5. Experimental results
+6. Further research directions
+7. Conclusions
+
+
 
 1. Overall length of paper, less than 15 pages
 2. Scientific PhD audience, think Springer Nature or IEEE Xplore level.
@@ -222,11 +252,7 @@ Instructions:
 	https://link.springer.com/article/10.1007/s10462-023-10468-6
 	For: The section on prognostic specific evaluation metrics. Lambda is what I used. Lambda = time from first prediction of tool replacement to wear threshold. Lower Lambda is better - zero is ideal. 
 
-7. Attention mechanisms used:
-   - NW - NadarayaWatson
-   - TP - Temporal attention
-   - MH - MultiHead
-   - SA - Self Attention 
+
    
 8. RESULTS:
  - Models were trained using 3 data files
