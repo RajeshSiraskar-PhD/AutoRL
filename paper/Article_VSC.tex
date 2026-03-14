@@ -7,13 +7,19 @@
 \usepackage{amsmath, amssymb, amsfonts}
 \usepackage{booktabs}
 \usepackage{siunitx}
+\usepackage[table]{xcolor}
 \usepackage{graphicx}
 \graphicspath{{figures/}{paper/figures/}}
 \usepackage{hyperref}
 \usepackage[nameinlink,noabbrev]{cleveref}
 \usepackage[style=apa,backend=biber,sorting=nyt]{biblatex}
 \DeclareLanguageMapping{american}{american-apa}
-\addbibresource{references.bib}
+\IfFileExists{references.bib}{\addbibresource{references.bib}}{\addbibresource{../references.bib}}
+
+\newcommand{\autorlFigRoot}{\detokenize{figures and reports}}
+\IfFileExists{\detokenize{paper/figures and reports/SIT_Results/_Analysis_Report_SIT_Set-1.jpg}}{%
+  \renewcommand{\autorlFigRoot}{\detokenize{paper/figures and reports}}%
+}{}
 
 \hypersetup{
   colorlinks=true,
@@ -73,8 +79,12 @@ The pipeline supports:
 
 In addition to model files, each trained agent writes a metadata JSON containing algorithm, attention mechanism, training file, learning rate, discount factor, number of episodes, and training summaries.
 
-\section{Predictive maintenance as a Markov decision process}
-\subsection{MDP and POMDP formulation}
+\section{Foundational concepts}
+\label{sec:foundations}
+This section consolidates the theoretical foundations used throughout the paper: (i) PdM as an MDP/POMDP, (ii) the RL algorithms compared, and (iii) attention mechanisms used as feature extractors.
+
+\subsection{Predictive maintenance as a Markov decision process}
+\subsubsection{MDP and POMDP formulation}
 We model the maintenance decision problem as an episodic Markov decision process (MDP) $\mathcal{M}=(\mathcal{S},\mathcal{A},P,r,\gamma)$~\cite{SuttonBarto2018}, where $\mathcal{S}$ is the set of environment states, $\mathcal{A}$ is the action space, $P$ is the transition kernel, $r$ is the reward function, and $\gamma$ is the discount factor. At each discrete timestep $t$, the agent chooses an action
 \begin{equation}
   a_t \in \mathcal{A}=\{0,1\},
@@ -88,33 +98,14 @@ In classical MDPs, the agent observes the full state $s_t$ at each step. However
 \end{equation}
 The agent must infer the hidden state (wear) from the history of observations and actions, motivating the use of feature extractors and attention mechanisms to capture temporal and cross-sensor dependencies.
 
-\subsection{Observation design: wear is hidden}
-A critical modelling choice is that $w_t$ is \emph{excluded} from observations. The agent must infer maintenance decisions solely from sensors (forces, vibrations, acoustics, currents), which aligns with realistic deployments where true wear is expensive or impossible to measure in real time. Formally, the observation is as above:
-\begin{equation}
-  o_t \equiv \mathbf{x}_t = \mathrm{Sensors}(t),\qquad w_t\notin o_t.
-\end{equation}
-This makes the environment a simple POMDP, not a fully observable MDP. The state is only partially visible, and the agent must learn to extract relevant information from the available sensor data.
+\paragraph{Pros/cons.}
+Formulating PdM as a POMDP is realistic and prevents label leakage (wear is not directly observable), which makes positive results more meaningful for deployment. The drawback is increased learning difficulty and higher variance in returns: if the observation does not contain enough predictive information (or if the feature extractor is weak), agents may appear unstable even when the control objective is simple.
 
-\subsection{Episode termination}
-Episodes terminate on (i) action \emph{replace} or (ii) a threshold violation (wear exceeding the wear threshold), or (iii) end-of-file truncation.
+\subsubsection{What is ``theory'' vs. ``implementation'' in this paper?}
+The MDP/POMDP formulation above is the conceptual model. The concrete environment realization (observation vector definition, termination rules, reward shaping constants, and schema handling) is an engineering design choice and is therefore described in \Cref{sec:implementation}.
 
-\subsection{Reward function}
-The reward is shaped to encourage (a) long tool usage without violation and (b) replacement close to (but before) the wear threshold. With wear threshold $W$ and wear ratio $\rho_t=w_t/W$, the environment implements a piecewise reward (see \texttt{MT\_Env.step} in \texttt{rl\_pdm.py}):
-\begin{align}
-  r_t =
-  \begin{cases}
-    R_3 + \kappa(\rho_t) & a_t=0,\; w_t\le W \\
-    \tfrac{1}{2}R_2 & a_t=0,\; w_t>W \\
-    R_2 & a_t=1,\; w_t>W \\
-    R_1 & a_t=1,\; w_t\le W
-  \end{cases}
-\end{align}
-where $R_1$ is a small survival reward, $R_2$ is a catastrophic violation penalty, $R_3$ is a small replacement cost, and $\kappa(\rho)$ is a bonus increasing with $\rho$ for high-wear pre-threshold replacement (implemented as a stepped function for $\rho>0.7,0.8,0.9$).
-
-This design encodes an asymmetric risk profile consistent with safety-critical maintenance: a single violation is substantially worse than an ``early'' replacement.
-
-\section{Attention mechanisms for predictive maintenance}
-\subsection{Attention in general}
+\subsection{Attention mechanisms for predictive maintenance}
+\subsubsection{Attention in general}
 Attention mechanisms allow models to dynamically focus on the most relevant parts of their input. In its general form, attention is a mapping from queries $Q$, keys $K$, and values $V$ to a context representation:
 \begin{equation}
   \mathrm{Att}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V,
@@ -123,7 +114,7 @@ where $d_k$ is the key dimension. This formulation, popularized by Transformer a
 
 In predictive maintenance, attention is attractive because it can (i) emphasize salient sensors, (ii) highlight interactions among signals, and (iii) provide a structured inductive bias without necessarily increasing end-to-end model complexity dramatically. In this work, attention is implemented as a \emph{feature extractor} $\phi_\theta(\mathbf{x}_t)$ inside the policy/value networks (Stable-Baselines3 custom extractors), shifting attention from ``sequence-to-sequence'' NLP settings to ``feature weighting/fusion'' over multi-sensor inputs.
 
-\subsection{Nadaraya--Watson (NW) attention}
+\subsubsection{Nadaraya--Watson (NW) attention}
 \paragraph{Theory.}
 The Nadaraya--Watson estimator performs kernel regression by computing a similarity-weighted average over reference points~\cite{Nadaraya1964, Watson1964}. In an attention view, the query is the current feature vector and keys are prototypes; weights are derived from a kernel over distances.
 
@@ -141,7 +132,7 @@ and the output context is $\sum_i \alpha_i\mathbf{v}_i$.
 \paragraph{Pros/cons.}
 NW attention is computationally light (distance + softmax), offers a smooth inductive bias, and connects to prior PdM attention work emphasizing edge constraints~\cite{Siraskar2024NWAttention}. However, prototype-based memories may underfit complex feature interactions when the optimal policy depends on higher-order relationships across sensors.
 
-\subsection{Temporal attention (TP)}
+\subsubsection{Temporal attention (TP)}
 \paragraph{Theory.}
 Degradation is inherently temporal; positional encodings provide a simple mechanism to inject time context into a feed-forward representation. Sinusoidal encodings are defined as
 \begin{align}
@@ -149,15 +140,26 @@ Degradation is inherently temporal; positional encodings provide a simple mechan
   \mathrm{PE}(pos,2i{+}1) &= \cos\left(\frac{pos}{10000^{2i/d}}\right).
 \end{align}
 
+In addition, a lightweight ``spatial'' attention mask over sensor channels can be modeled as
+\begin{equation}
+  \mathbf{m}_t = \mathrm{softmax}(W\mathbf{x}_t + \mathbf{b}),\qquad
+  \tilde{\mathbf{x}}_t = \mathbf{m}_t \odot \mathbf{x}_t,
+\end{equation}
+so that the extractor emphasizes a sparse subset of sensors while still operating on a single time step.
+
 \paragraph{Implementation in AutoRL.}
 The extractor (\texttt{TemporalAttentionExtractor}) uses: (i) a fixed sinusoidal positional encoding buffer, (ii) a learnable temporal embedding vector, (iii) a spatial attention MLP producing a per-feature soft mask, and (iv) a fusion MLP over concatenated weighted spatial features and temporal features. A timestep counter is maintained as a buffer and incremented on each forward pass.
 
 \paragraph{Pros/cons.}
 Temporal attention is lightweight yet adds an explicit monotone-time context, which is often missing in per-timestep sensor vectors. A limitation is that the internal timestep is not automatically reset by the policy network on environment resets; care must be taken in production to align temporal state with episode boundaries.
 
-\subsection{Multi-head attention (MH)}
+\subsubsection{Multi-head attention (MH)}
 \paragraph{Theory.}
-Multi-head attention typically learns multiple subspaces of attention to capture heterogeneous dependencies~\cite{Vaswani2017Attention}.
+Multi-head attention learns multiple attention subspaces to capture heterogeneous dependencies~\cite{Vaswani2017Attention}. In the standard formulation,
+\begin{align}
+  \mathrm{head}_h &= \mathrm{softmax}\!\left(\frac{Q_hK_h^\top}{\sqrt{d_h}}\right)V_h,\qquad h\in\{1,\dots,H\},\\
+  \mathrm{MHAtt}(Q,K,V) &= \mathrm{Concat}(\mathrm{head}_1,\dots,\mathrm{head}_H)W_O.
+\end{align}
 
 \paragraph{Implementation in AutoRL.}
 The extractor (\texttt{MultiHeadAttentionExtractor}) projects the observation into queries, keys, and values and reshapes them into $H$ heads. Because observations are single feature vectors (not sequences), the code computes a per-head scalar score
@@ -170,7 +172,7 @@ then gates each head's value $\mathbf{V}_h$ by $\alpha_h$ and concatenates acros
 \paragraph{Pros/cons.}
 MH adds representational capacity with controlled width and can be efficient on low-dimensional sensor vectors. Since attention is over heads rather than over time indices, interpretability differs from classical temporal self-attention.
 
-\subsection{Self-attention (SA)}
+\subsubsection{Self-attention (SA)}
 \paragraph{Theory.}
 Self-attention is a mechanism that allows each feature (or token) to attend to all others, learning dependencies and interactions. In the standard Transformer, self-attention is defined as:
 \begin{equation}
@@ -186,24 +188,30 @@ The extractor (\texttt{SelfAttentionExtractor}) projects inputs to a feature spa
 \paragraph{Pros/cons.}
 This design can stabilize training via normalization and residual structure, and can model feature interactions. However, batchwise normalization may introduce sensitivity to batch composition and is less interpretable than classical temporal self-attention.
 
-\section{RL algorithms studied}
+\subsection{RL algorithms studied}
 We compare four standard RL approaches commonly used for control and decision-making.
 
-\subsection{\textsc{DQN}}
+\subsubsection{\textsc{DQN}}
 \textsc{DQN} learns an action-value function $Q_\theta(s,a)$ and minimizes a temporal-difference objective~\cite{Mnih2015DQN}:
 \begin{equation}
   \mathcal{L}(\theta) = \mathbb{E}\bigl[\bigl(r_t + \gamma \max_{a'}Q_{\bar\theta}(s_{t+1},a') - Q_\theta(s_t,a_t)\bigr)^2\bigr],
 \end{equation}
 where $\bar\theta$ denotes a target network.
 
-\subsection{\textsc{A2C}}
+\paragraph{Pros/cons.}
+DQN is sample-efficient and simple to deploy for discrete actions, but can be sensitive to reward scaling and partial observability. In this PdM setting, hidden wear can make value bootstrapping brittle unless the feature extractor captures enough history-relevant signal.
+
+\subsubsection{\textsc{A2C}}
 Actor--critic methods learn both a policy $\pi_\theta(a|s)$ and a value baseline $V_\psi(s)$. The advantage estimate
 \begin{equation}
   \hat{A}_t = \hat{G}_t - V_\psi(s_t)
 \end{equation}
 reduces variance in policy gradients. \textsc{A2C} is a synchronous variant of the asynchronous actor--critic family~\cite{Mnih2016A3C}.
 
-\subsection{\textsc{PPO}}
+\paragraph{Pros/cons.}
+A2C provides lower-variance gradients than pure Monte-Carlo methods and often trains more stably than DQN on noisy rewards. However, it typically requires careful tuning of learning rate and entropy regularization; compute is also higher than REINFORCE due to simultaneous actor and critic optimization.
+
+\subsubsection{\textsc{PPO}}
 \textsc{PPO} improves stability by constraining policy updates via a clipped surrogate objective~\cite{Schulman2017PPO}:
 \begin{align}
   r_t(\theta) &= \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)},\\
@@ -211,7 +219,10 @@ reduces variance in policy gradients. \textsc{A2C} is a synchronous variant of t
 \end{align}
 While effective, PPO typically incurs higher compute due to multiple epochs/minibatch passes per batch.
 
-\subsection{\textsc{REINFORCE}}
+\paragraph{Pros/cons.}
+PPO is a strong, general-purpose baseline with robust training behavior in many domains, but its inner-loop optimization increases training compute. In AutoRL sweeps that train many configurations, this additional compute compounds and can be a drawback for edge- and sustainability-motivated workflows.
+
+\subsubsection{\textsc{REINFORCE}}
 \textsc{REINFORCE}~\cite{Williams1992REINFORCE} estimates the policy gradient from Monte-Carlo returns. For a trajectory $\tau=(s_0,a_0,\dots,s_T)$ with return
 \begin{equation}
   G_t = \sum_{k=0}^{T-t-1}\gamma^k r_{t+k},
@@ -234,6 +245,111 @@ where entropy regularization encourages exploration.
 
 \paragraph{Why \textsc{REINFORCE} can be edge-suited.}
 Compared to PPO, REINFORCE is algorithmically simpler (no ratio clipping, fewer inner optimization epochs) and thus can reduce training-side compute. In an AutoRL setting where many algorithm/attention combinations are trained, such savings compound and can lower overall experimental carbon footprint.
+
+\paragraph{Pros/cons.}
+REINFORCE is easy to implement and can be compute-light, especially when paired with a variance-reducing baseline. The main drawback is higher gradient variance than actor--critic methods when rewards are sparse or highly noisy; attention extractors can partially mitigate this by improving representation quality.
+
+\section{Implementation}
+\label{sec:implementation}
+This section consolidates environment- and pipeline-level implementation details that are important for reproducibility and for practitioners aiming to adapt AutoRL to their own PdM data.
+
+\subsection{Environment design: a Gymnasium-compatible milling PdM POMDP}
+\label{sec:env_design}
+\subsubsection{Design goals and schema abstraction}
+The environment class \texttt{MT\_Env} (\texttt{rl\_pdm.py}) implements a Gymnasium-style interface and is designed to be \emph{schema-adaptive}: the same environment logic runs across different milling sensor schemas by selecting observation columns based on the available dataset headers.
+
+\subsubsection{Observation design: wear is hidden}
+Only sensor readings are included in the observation vector. Tool wear is excluded from observations but retained internally for termination and reward computation:
+\begin{equation}
+  o_t \equiv \mathbf{x}_t = \mathrm{Sensors}(t),\qquad w_t\notin o_t.
+\end{equation}
+This enforces partial observability and prevents leakage of the health label into the policy input.
+
+\subsubsection{Action space and episode termination}
+The action space is binary, $\mathcal{A}=\{0,1\}$, where 0 denotes \emph{replace} and 1 denotes \emph{continue}. Episodes terminate on (i) action \emph{replace}, (ii) a wear-threshold violation, or (iii) end-of-file truncation.
+
+\subsubsection{Reward shaping and asymmetric PdM risk}
+The reward is shaped to encourage (a) long tool usage without violation and (b) replacement close to (but before) the wear threshold. With wear threshold $W$ and wear ratio $\rho_t=w_t/W$, the environment implements a piecewise reward (\texttt{MT\_Env.step} in \texttt{rl\_pdm.py}):
+\begin{align}
+  r_t =
+  \begin{cases}
+    R_3 + \kappa(\rho_t) & a_t=0,\; w_t\le W \\
+    \tfrac{1}{2}R_2 & a_t=0,\; w_t>W \\
+    R_2 & a_t=1,\; w_t>W \\
+    R_1 & a_t=1,\; w_t\le W
+  \end{cases}
+\end{align}
+where $R_1$ is a small survival reward, $R_2$ is a catastrophic violation penalty, $R_3$ is a small replacement cost, and $\kappa(\rho)$ implements a near-threshold replacement bonus (parameterized by $R_4$ in the code) that increases with $\rho$ for high-wear pre-threshold replacement.
+
+This design encodes an asymmetric risk profile consistent with safety-critical maintenance: a single late replacement can be substantially worse than an early replacement.
+
+\begin{table}[t]
+  \centering
+  \caption{Reward shaping components in the milling PdM environment (qualitative summary).}
+  \label{tab:reward_components}
+  \begin{tabular}{p{0.20\linewidth} p{0.22\linewidth} p{0.50\linewidth}}
+    \toprule
+    \rowcolor{gray!20} \textbf{Component} & \textbf{Applied when} & \textbf{Effect}\\
+    \midrule
+    $R_1$ survival reward & continue and safe & Encourages utilization while below threshold.\\
+    $R_2$ violation penalty & continue and violate & Strongly discourages threshold violation.\\
+    $R_3$ replacement cost & replace action & Regularizes against replacing too early.\\
+    $R_4$ near-threshold bonus & replace near $W$ & Rewards timely replacement close to threshold.\\
+    Stepwise bonuses & wear ratio \,$\ge 0.7,0.8,0.9$ & Increases incentive as wear approaches threshold.\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Evaluation protocol implementation}
+\label{sec:eval_protocol}
+\subsubsection{Multi-round evaluation}
+Each model--test-file pair is evaluated for multiple rounds to reduce variance due to stochasticity and initialization. In this paper we use 20 rounds, and retain a ``long'' CSV with all repetitions to enable confidence intervals and hypothesis testing.
+
+\subsubsection{Unseen-only emphasis}
+The analysis emphasizes unseen-only evaluation panels for generalization claims: self-evaluation on training traces is useful for debugging, but can overestimate deployment performance.
+
+\subsection{Dataset schemas and sensor signals}
+\label{sec:schema}
+The environment supports multiple schemas through column-based feature selection. \Cref{tab:schema_features} lists the sensor channels used in each schema (excluding \texttt{Time}, \texttt{tool\_wear}, and \texttt{ACTION\_CODE}).
+
+\begin{table}[t]
+\centering
+\caption{Sensor channels used as observations by schema (as implemented in \texttt{MT\_Env}).}
+\label{tab:schema_features}
+\begin{tabular}{p{0.18\linewidth} p{0.75\linewidth}}
+\toprule
+\rowcolor{gray!20} \textbf{Schema} & \textbf{Observation channels}\\
+\midrule
+SIT & \texttt{Vib\_Spindle}, \texttt{Vib\_Table}, \texttt{Sound\_Spindle}, \texttt{Sound\_table}, \texttt{X\_Load\_Cell}, \texttt{Y\_Load\_Cell}, \texttt{Z\_Load\_Cell}, \texttt{Current}\\
+IEEE & \texttt{force\_x}, \texttt{force\_y}, \texttt{force\_z}, \texttt{vibration\_x}, \texttt{vibration\_y}, \texttt{vibration\_z}, \texttt{acoustic\_emission\_rms}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Default constants and hyperparameters}
+\label{sec:defaults}
+\Cref{tab:defaults} summarizes the default constants used in the PdM environment and training module. AutoRL sweeps may override some values (e.g., learning rate, $\gamma$) via the CLI pipeline.
+
+\begin{table}[t]
+\centering
+\caption{Default environment/training constants (from \texttt{rl\_pdm.py} and \texttt{batch\_train.py}).}
+\label{tab:defaults}
+\begin{tabular}{p{0.34\linewidth} p{0.18\linewidth} p{0.40\linewidth}}
+\toprule
+\rowcolor{gray!20} \textbf{Parameter} & \textbf{Default} & \textbf{Meaning}\\
+\midrule
+\texttt{WEAR\_THRESHOLD} & 300.000 & Wear threshold used for termination and reporting.\\
+\texttt{TRAINING\_WEAR\_THRESHOLD} & 300.000 & Training threshold (configurable; default equals threshold).\\
+\texttt{EPISODES} & 100 & Training episodes per run (default in RL module).\\
+\texttt{LR\_DEFAULT} & 0.001 & Default learning rate (overridden by AutoRL sweep values).\\
+\texttt{GAMMA\_DEFAULT} & 0.990 & Default discount factor (overridden by AutoRL sweep values).\\
+\texttt{EVAL\_ROUNDS} & 20 & Evaluation rounds per model on unseen data.\\
+\texttt{IAR\_RANGE} & 0.050 & IAR bounds range for timing metric computation.\\
+\texttt{LAMBDA} & 0.900 & Logistic slack coefficient used in $\lambda$ timing computation.\\
+\texttt{R1}, \texttt{R2}, \texttt{R3}, \texttt{R4} & 0.100, -100.000, -0.500, 60.000 & Reward shaping constants.\\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Evaluation metrics}
 \subsection{Prognostic-specific $\lambda$ metric}
@@ -264,11 +380,11 @@ Experiments use the SIT milling-machine sensor schema (8 sensor channels per tim
 We train $3\times 4\times 4 = 48$ agents: algorithms \{\textsc{A2C}, \textsc{DQN}, \textsc{PPO}, \textsc{REINFORCE}\} crossed with attention types \{NW, TP, MH, SA\}. Training metadata indicates $500$ episodes, learning rate $10^{-4}$, and $\gamma=0.99$ for the reported model set.
 
 \subsection{Multi-round evaluation}
-Each model--test-file pair is evaluated for 20 rounds. The long-form results CSV is retained for statistical analysis; plots and heatmaps use round means. The primary analysis artifacts used in this paper are:
+Each model--test-file pair is evaluated for 20 rounds (see \Cref{sec:eval_protocol}). The long-form results CSV is retained for statistical analysis; plots and heatmaps use round means. The primary analysis artifacts used in this paper are:
 \begin{itemize}
   \item \texttt{results/Analysis/01-Mar-2026 Good Set-1/Evaluation\_Results\_Multiround\_SIT\_NoAM\_20260301\_181435.csv},
-  \item \texttt{figures/analysis\_report\_sit.png},
-  \item \texttt{figures/heatmap\_allagents\_sit.png}.
+  \item \texttt{\detokenize{paper/figures and reports/SIT_Results/_Analysis_Report_SIT_Set-1.jpg}},
+  \item \texttt{\detokenize{paper/figures and reports/SIT_Results/_Heatmap_SIT_Set-1.jpg}}.
 \end{itemize}
 
 \section{Results}
@@ -326,15 +442,15 @@ This manuscript is based on the accompanying AutoRL codebase (\texttt{train\_age
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{analysis_report_sit.png}
-\caption{AutoRL evaluation analysis report (SIT schema). Panels summarize (A) mean evaluation score across algorithms and attention mechanisms, (B) grouped comparisons, (C) algorithm-level means with confidence intervals, and (D) the $\lambda$ metric.}
+\includegraphics[width=\linewidth]{\autorlFigRoot/SIT_Results/_Analysis_Report_SIT_Set-1.jpg}
+\caption{AutoRL evaluation analysis report (SIT schema, Set-1). Panels summarize (A) mean evaluation score across algorithms and attention mechanisms, (B) grouped comparisons, (C) algorithm-level means with confidence intervals, and (D) the $\lambda$ metric.}
 \label{fig:analysisreport}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{heatmap_allagents_sit.png}
-\caption{Heatmap of evaluation scores across trained agent configurations (SIT schema). Each row corresponds to an RL model variant; columns are test files. The best-performing region corresponds to \textsc{REINFORCE} with multi-head or temporal attention.}
+\includegraphics[width=\linewidth]{\autorlFigRoot/SIT_Results/_Heatmap_SIT_Set-1.jpg}
+\caption{Heatmap of evaluation scores across trained agent configurations (SIT schema, Set-1). Each row corresponds to an RL model variant; columns are test files. The best-performing region corresponds to \textsc{REINFORCE} with multi-head or temporal attention.}
 \label{fig:heatmap}
 \end{figure}
 
